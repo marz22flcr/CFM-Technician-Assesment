@@ -1,0 +1,5 @@
+{
+  "name": "CFM Technician Assessment",
+  "description": "A comprehensive assessment application for Domestic Air Conditioning and Refrigeration Technicians, featuring multiple modules, scoring, and an admin summary view with centralized results.",
+  "requestFramePermissions": []
+}
