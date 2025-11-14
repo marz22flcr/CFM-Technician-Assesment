@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 // Fix: Import ModuleResult for type annotations.
 // FIX: Import Trainee type to be used for explicit typing.
 import { View, ExamRecord, SortKey, SortDirection, ModalState, FirestoreDB, Module, ModalDetails, ModuleResult, TraineeList, Trainee } from '../types';
-import { listenForResults, clearAllResults } from '../services/firebaseService';
+import { listenForResults, clearAllResults, addTrainee, deleteTrainee } from '../services/firebaseService';
 import { exportCsv } from '../services/csvExporter';
 import { EXAM_DATA } from '../constants';
 import ActionModal from './ActionModal';
@@ -12,7 +12,6 @@ interface AdminSummaryProps {
   db: FirestoreDB | null;
   isFirebaseReady: boolean;
   trainees: TraineeList;
-  setTrainees: React.Dispatch<React.SetStateAction<TraineeList>>;
 }
 
 const EyeIcon: React.FC<{ slashed?: boolean }> = ({ slashed }) => (
@@ -33,8 +32,8 @@ const EyeIcon: React.FC<{ slashed?: boolean }> = ({ slashed }) => (
 
 const TraineeManager: React.FC<{
   trainees: TraineeList;
-  setTrainees: React.Dispatch<React.SetStateAction<TraineeList>>;
-}> = ({ trainees, setTrainees }) => {
+  db: FirestoreDB | null;
+}> = ({ trainees, db }) => {
   const [newTrainee, setNewTrainee] = useState({ username: '', password: '', name: '', email: '', id: '' });
   const [error, setError] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
@@ -45,8 +44,12 @@ const TraineeManager: React.FC<{
     setError('');
   };
 
-  const handleAddTrainee = (e: React.FormEvent) => {
+  const handleAddTrainee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!db) {
+      setError('Database connection not ready.');
+      return;
+    }
     if (!newTrainee.username || !newTrainee.password || !newTrainee.name) {
       setError('Username, Password, and Name are required.');
       return;
@@ -56,28 +59,33 @@ const TraineeManager: React.FC<{
       return;
     }
 
-    setTrainees(prev => ({
-      ...prev,
-      [newTrainee.username.trim()]: {
+    try {
+      const traineeData: Trainee = {
         password: newTrainee.password.trim(),
         name: newTrainee.name.trim(),
         email: newTrainee.email.trim(),
         id: newTrainee.id.trim(),
-      }
-    }));
-    setNewTrainee({ username: '', password: '', name: '', email: '', id: '' });
-    setError('');
+      };
+      await addTrainee(db, newTrainee.username.trim(), traineeData);
+      setNewTrainee({ username: '', password: '', name: '', email: '', id: '' });
+      setError('');
+    } catch (err) {
+      setError('Failed to add trainee. Please try again.');
+      console.error(err);
+    }
   };
 
-  const handleDeleteTrainee = () => {
-    if (!traineeToDelete) return;
+  const handleDeleteTrainee = async () => {
+    if (!traineeToDelete || !db) return;
     
-    setTrainees(prev => {
-        const updated = { ...prev };
-        delete updated[traineeToDelete];
-        return updated;
-    });
-    setTraineeToDelete(null);
+    try {
+      await deleteTrainee(db, traineeToDelete);
+      setTraineeToDelete(null);
+    } catch (err) {
+      console.error("Failed to delete trainee:", err);
+      // Optionally show an error modal to the user
+      setTraineeToDelete(null);
+    }
   };
 
   const togglePasswordVisibility = (username: string) => {
@@ -172,7 +180,7 @@ const TraineeManager: React.FC<{
 };
 
 
-const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseReady, trainees, setTrainees }) => {
+const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseReady, trainees }) => {
   const [results, setResults] = useState<ExamRecord[]>([]);
   const [filterText, setFilterText] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('timestamp');
@@ -351,7 +359,7 @@ const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseRea
 
       <div className="bg-white rounded-2xl shadow-xl p-8 mt-8 border-t-8 border-cfm-blue">
         <h2 className="text-3xl font-bold text-cfm-dark mb-4">Trainee Credential Management</h2>
-        <TraineeManager trainees={trainees} setTrainees={setTrainees} />
+        <TraineeManager trainees={trainees} db={db} />
       </div>
 
       {showClearConfirm && (

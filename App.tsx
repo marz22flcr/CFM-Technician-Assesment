@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 // FIX: Import EXAM_DATA to resolve reference error.
-import { TRAINEES, USER_KEY, EXAM_DATA } from './constants';
+import { INITIAL_TRAINEES, USER_KEY, EXAM_DATA } from './constants';
 import { View, User, ExamSession, ExamRecord, FirestoreDB, ModuleResult, TraineeList } from './types';
-import { initializeFirebase, saveExamRecord } from './services/firebaseService';
+import { initializeFirebase, saveExamRecord, listenForTrainees, seedInitialTrainees } from './services/firebaseService';
 
 import Header from './components/Header';
 import Auth from './components/Auth';
@@ -34,7 +34,7 @@ const App: React.FC = () => {
     submittedModules: {},
   });
   const [finalRecord, setFinalRecord] = useState<ExamRecord | null>(null);
-  const [trainees, setTrainees] = useState<TraineeList>(TRAINEES);
+  const [trainees, setTrainees] = useState<TraineeList>({});
 
   const [db, setDb] = useState<FirestoreDB | null>(null);
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
@@ -42,6 +42,21 @@ const App: React.FC = () => {
   useEffect(() => {
     initializeFirebase(setDb, setIsFirebaseReady);
   }, []);
+
+  useEffect(() => {
+    if (db && isFirebaseReady) {
+      seedInitialTrainees(db, INITIAL_TRAINEES);
+      
+      const unsubscribe = listenForTrainees(db, (fetchedTrainees) => {
+        setTrainees(fetchedTrainees);
+      }, (error) => {
+        console.error("Error fetching trainees:", error);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [db, isFirebaseReady]);
+
 
   const modules = EXAM_DATA.modules;
   const totalPossible = useMemo(() => modules.reduce((sum, mod) => sum + mod.questions.length, 0), [modules]);
@@ -81,9 +96,9 @@ const App: React.FC = () => {
   }, [user, view]);
 
   const finalizeExam = useCallback(async (): Promise<ExamRecord> => {
-    // FIX: Explicitly type the accumulator and value in the reduce function to prevent type errors.
+    // FIX: Explicitly typed the arguments for the reduce function to resolve 'Type 'unknown' is not assignable to type 'number'' error.
     const finalTotalScore = Object.values(examSession.moduleResults).reduce((a: number, b: ModuleResult) => a + b.score, 0);
-    // FIX: Explicitly type the accumulator and value in the reduce function to prevent type errors.
+    // FIX: Explicitly typed the arguments for the reduce function to resolve 'Type 'unknown' is not assignable to type 'number'' error.
     const finalTotalPossible = Object.values(examSession.moduleResults).reduce((a: number, b: ModuleResult) => a + b.total, 0);
     
     const record: ExamRecord = {
@@ -134,7 +149,7 @@ const App: React.FC = () => {
       case 'admin-login':
         return <AdminLogin navigate={navigate} />;
       case 'admin':
-        return <AdminSummary navigate={navigate} db={db} isFirebaseReady={isFirebaseReady} trainees={trainees} setTrainees={setTrainees} />;
+        return <AdminSummary navigate={navigate} db={db} isFirebaseReady={isFirebaseReady} trainees={trainees} />;
       default:
         return <Auth setUser={setUser} navigate={navigate} trainees={trainees} />;
     }

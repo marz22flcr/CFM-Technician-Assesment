@@ -1,5 +1,5 @@
 
-import { FirestoreDB, ExamRecord } from '../types';
+import { FirestoreDB, ExamRecord, TraineeList, Trainee } from '../types';
 
 declare global {
   interface Window {
@@ -17,6 +17,7 @@ const getEnv = () => ({
 });
 
 const RESULTS_PATH = 'exam_results';
+const TRAINEES_PATH = 'trainees';
 
 export const initializeFirebase = (
   setDb: (db: FirestoreDB) => void,
@@ -83,6 +84,11 @@ const getResultsCollection = (db: FirestoreDB) => {
     return db.collection('artifacts', appId, 'public', 'data', RESULTS_PATH);
 };
 
+const getTraineesCollection = (db: FirestoreDB) => {
+    const { appId } = getEnv();
+    return db.collection('artifacts', appId, 'public', 'data', TRAINEES_PATH);
+};
+
 export const saveExamRecord = async (
   db: FirestoreDB | null,
   isFirebaseReady: boolean,
@@ -137,5 +143,76 @@ export const clearAllResults = async (db: FirestoreDB): Promise<number> => {
     } catch (e) {
         console.error("Error deleting documents:", e);
         return 0;
+    }
+};
+
+export const listenForTrainees = (
+  db: FirestoreDB,
+  onUpdate: (trainees: TraineeList) => void,
+  onError: (error: Error) => void
+): (() => void) => {
+  const collectionRef = getTraineesCollection(db);
+  const unsubscribe = collectionRef.onSnapshot((snapshot: any) => {
+    const fetchedTrainees: TraineeList = {};
+    snapshot.docs.forEach((doc: any) => {
+      fetchedTrainees[doc.id] = doc.data() as Trainee;
+    });
+    onUpdate(fetchedTrainees);
+  }, onError);
+
+  return unsubscribe;
+};
+
+export const addTrainee = async (
+  db: FirestoreDB,
+  username: string,
+  traineeData: Trainee
+) => {
+  if (!db) {
+    console.error("Firestore not ready. Cannot add trainee.");
+    return;
+  }
+  try {
+    const docRef = getTraineesCollection(db).doc(username);
+    await docRef.set(traineeData);
+    console.log("Trainee successfully added to Firestore.");
+  } catch (e) {
+    console.error("Error adding trainee to Firestore:", e);
+    throw e;
+  }
+};
+
+export const deleteTrainee = async (
+  db: FirestoreDB,
+  username: string
+) => {
+  if (!db) {
+    console.error("Firestore not ready. Cannot delete trainee.");
+    return;
+  }
+  try {
+    const docRef = getTraineesCollection(db).doc(username);
+    await docRef.delete();
+    console.log("Trainee successfully deleted from Firestore.");
+  } catch (e) {
+    console.error("Error deleting trainee from Firestore:", e);
+    throw e;
+  }
+};
+
+export const seedInitialTrainees = async (db: FirestoreDB, initialTrainees: TraineeList) => {
+    const collectionRef = getTraineesCollection(db);
+    try {
+        const snapshot = await collectionRef.get();
+        if (snapshot.empty) {
+            console.log("Trainees collection is empty. Seeding initial data...");
+            const seedPromises = Object.entries(initialTrainees).map(([username, traineeData]) => {
+                return collectionRef.doc(username).set(traineeData);
+            });
+            await Promise.all(seedPromises);
+            console.log("Initial trainees seeded successfully.");
+        }
+    } catch (e) {
+        console.error("Error seeding trainees:", e);
     }
 };

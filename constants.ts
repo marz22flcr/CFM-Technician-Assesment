@@ -1,6 +1,6 @@
 import { ExamData, TraineeList } from './types';
 
-export const TRAINEES: TraineeList = {
+export const INITIAL_TRAINEES: TraineeList = {
   'jdelacruz': {
     password: 'password123',
     name: 'Juan Dela Cruz',
