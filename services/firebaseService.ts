@@ -203,9 +203,15 @@ export const deleteTrainee = async (
 export const seedInitialTrainees = async (db: FirestoreDB, initialTrainees: TraineeList) => {
     const collectionRef = getTraineesCollection(db);
     try {
-        const snapshot = await collectionRef.get();
-        if (snapshot.empty) {
-            console.log("Trainees collection is empty. Seeding initial data...");
+        const firstTraineeUsername = Object.keys(initialTrainees)[0];
+        if (!firstTraineeUsername) {
+            return; // No initial trainees to seed
+        }
+        const docRef = collectionRef.doc(firstTraineeUsername);
+        const docSnap = await docRef.get();
+
+        if (!docSnap.exists) {
+            console.log("Initial trainee data not found. Seeding initial data...");
             const seedPromises = Object.entries(initialTrainees).map(([username, traineeData]) => {
                 return collectionRef.doc(username).set(traineeData);
             });
