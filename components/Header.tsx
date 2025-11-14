@@ -1,17 +1,27 @@
 
+
 import React from 'react';
 import { User } from '../types';
-import { WrenchIcon, UserIcon } from './Icons';
+import { WrenchIcon, UserIcon, ClockIcon } from './Icons';
 
 interface HeaderProps {
   user: User | null;
   totalPossible: number | null;
   currentScore: number | null;
   progress: number | null;
+  timeLeft: number | null;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, totalPossible, currentScore, progress }) => {
+const Header: React.FC<HeaderProps> = ({ user, totalPossible, currentScore, progress, timeLeft }) => {
   const currentTotal = totalPossible || 100;
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  const isLowTime = timeLeft !== null && timeLeft <= 300; // 5 minutes
 
   return (
     <header className="bg-white shadow-md sticky top-0 z-10">
@@ -25,24 +35,34 @@ const Header: React.FC<HeaderProps> = ({ user, totalPossible, currentScore, prog
         </div>
 
         {user?.name && (
-          <div className="flex flex-col items-end">
-            <div className="text-sm font-semibold text-gray-700 flex items-center space-x-2">
-              <UserIcon className="h-4 w-4 text-cfm-blue" />
-              <span>{user.name}</span>
+          <div className="flex items-center space-x-4">
+            {timeLeft !== null && (
+                <div className={`flex items-center space-x-2 p-2 rounded-lg ${isLowTime ? 'bg-red-100' : 'bg-gray-100'}`}>
+                    <ClockIcon className={`h-5 w-5 ${isLowTime ? 'text-error' : 'text-gray-600'}`} />
+                    <span className={`font-mono font-bold text-lg ${isLowTime ? 'text-error' : 'text-cfm-dark'}`}>
+                        {formatTime(timeLeft)}
+                    </span>
+                </div>
+            )}
+            <div className="flex flex-col items-end">
+              <div className="text-sm font-semibold text-gray-700 flex items-center space-x-2">
+                <UserIcon className="h-4 w-4 text-cfm-blue" />
+                <span>{user.name}</span>
+              </div>
+              {currentScore !== null && (
+                <div className="mt-1 text-sm text-gray-500">
+                  Score: <span className="font-bold text-cfm-blue">{currentScore} / {currentTotal}</span>
+                </div>
+              )}
+              {progress !== null && (
+                <div className="w-24 bg-gray-200 rounded-full h-1.5 mt-1">
+                  <div
+                    className="bg-cfm-blue h-1.5 rounded-full transition-all duration-500 ease-in-out"
+                    style={{ width: `${progress * 100}%` }}
+                  ></div>
+                </div>
+              )}
             </div>
-            {currentScore !== null && (
-              <div className="mt-1 text-sm text-gray-500">
-                Score: <span className="font-bold text-cfm-blue">{currentScore} / {currentTotal}</span>
-              </div>
-            )}
-            {progress !== null && (
-               <div className="w-24 bg-gray-200 rounded-full h-1.5 mt-1">
-                <div
-                  className="bg-cfm-blue h-1.5 rounded-full transition-all duration-500 ease-in-out"
-                  style={{ width: `${progress * 100}%` }}
-                ></div>
-              </div>
-            )}
           </div>
         )}
       </div>
