@@ -67,6 +67,15 @@ export interface ModalState {
   isError?: boolean;
 }
 
+export interface Trainee {
+  password: string;
+  name: string;
+  email: string;
+  id: string;
+}
+
+export type TraineeList = Record<string, Trainee>;
+
 // Simplified Firebase DB interface to match original code's usage
 export interface FirestoreDB {
   collection: (...path: string[]) => any;

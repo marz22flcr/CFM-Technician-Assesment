@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import { View, User, Module } from '../types';
 
@@ -6,9 +7,10 @@ interface LobbyProps {
   modules: Module[];
   navigate: (view: View) => void;
   user: User;
+  onLogout: () => void;
 }
 
-const Lobby: React.FC<LobbyProps> = ({ modules, navigate, user }) => {
+const Lobby: React.FC<LobbyProps> = ({ modules, navigate, user, onLogout }) => {
   const totalQuestions = modules.reduce((sum, mod) => sum + mod.questions.length, 0);
 
   return (
@@ -32,6 +34,13 @@ const Lobby: React.FC<LobbyProps> = ({ modules, navigate, user }) => {
         className="w-full bg-success text-white py-3 px-4 rounded-lg text-lg font-bold hover:bg-green-700 transition duration-150 shadow-lg"
       >
         Start Exam Now
+      </button>
+
+      <button
+        onClick={onLogout}
+        className="w-full mt-4 text-sm text-gray-500 hover:text-cfm-blue transition duration-150"
+      >
+        Logout and return to login screen
       </button>
     </div>
   );

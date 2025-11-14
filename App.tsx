@@ -1,7 +1,9 @@
+
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { EXAM_DATA, USER_KEY } from './constants';
-// Fix: Import ModuleResult to use for type annotations.
-import { View, User, ExamSession, ExamRecord, FirestoreDB, ModuleResult } from './types';
+// FIX: Import EXAM_DATA to resolve reference error.
+import { TRAINEES, USER_KEY, EXAM_DATA } from './constants';
+import { View, User, ExamSession, ExamRecord, FirestoreDB, ModuleResult, TraineeList } from './types';
 import { initializeFirebase, saveExamRecord } from './services/firebaseService';
 
 import Header from './components/Header';
@@ -32,6 +34,7 @@ const App: React.FC = () => {
     submittedModules: {},
   });
   const [finalRecord, setFinalRecord] = useState<ExamRecord | null>(null);
+  const [trainees, setTrainees] = useState<TraineeList>(TRAINEES);
 
   const [db, setDb] = useState<FirestoreDB | null>(null);
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
@@ -44,8 +47,8 @@ const App: React.FC = () => {
   const totalPossible = useMemo(() => modules.reduce((sum, mod) => sum + mod.questions.length, 0), [modules]);
 
   const currentScore = useMemo(() => {
-    // Fix: Add explicit type for 'res' parameter to solve type inference issue on 'res.score'.
-    return Object.values(examSession.moduleResults).reduce((sum, res: ModuleResult) => sum + res.score, 0);
+    // Fix: Explicitly type the accumulator in reduce to ensure correct type inference.
+    return Object.values(examSession.moduleResults).reduce((sum: number, res: ModuleResult) => sum + res.score, 0);
   }, [examSession.moduleResults]);
 
   const overallProgress = useMemo(() => {
@@ -78,9 +81,10 @@ const App: React.FC = () => {
   }, [user, view]);
 
   const finalizeExam = useCallback(async (): Promise<ExamRecord> => {
-    // Fix: Add explicit type for 'b' parameter to solve type inference issue on 'b.score' and 'b.total'.
-    const finalTotalScore = Object.values(examSession.moduleResults).reduce((a, b: ModuleResult) => a + b.score, 0);
-    const finalTotalPossible = Object.values(examSession.moduleResults).reduce((a, b: ModuleResult) => a + b.total, 0);
+    // FIX: Explicitly type the accumulator and value in the reduce function to prevent type errors.
+    const finalTotalScore = Object.values(examSession.moduleResults).reduce((a: number, b: ModuleResult) => a + b.score, 0);
+    // FIX: Explicitly type the accumulator and value in the reduce function to prevent type errors.
+    const finalTotalPossible = Object.values(examSession.moduleResults).reduce((a: number, b: ModuleResult) => a + b.total, 0);
     
     const record: ExamRecord = {
       user: user!,
@@ -95,16 +99,22 @@ const App: React.FC = () => {
     return record;
   }, [examSession, user, db, isFirebaseReady]);
 
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem(USER_KEY);
+    setUser(null);
+    navigate('auth');
+  }, [navigate]);
+
   const renderContent = () => {
     switch (view) {
       case 'auth':
-        return <Auth setUser={setUser} navigate={navigate} />;
+        return <Auth setUser={setUser} navigate={navigate} trainees={trainees} />;
       case 'lobby':
         if (!user) {
             navigate('auth');
             return null;
         }
-        return <Lobby modules={modules} navigate={navigate} user={user} />;
+        return <Lobby modules={modules} navigate={navigate} user={user} onLogout={handleLogout} />;
       case 'exam':
         if (!user) {
             navigate('auth');
@@ -124,9 +134,9 @@ const App: React.FC = () => {
       case 'admin-login':
         return <AdminLogin navigate={navigate} />;
       case 'admin':
-        return <AdminSummary navigate={navigate} db={db} isFirebaseReady={isFirebaseReady} />;
+        return <AdminSummary navigate={navigate} db={db} isFirebaseReady={isFirebaseReady} trainees={trainees} setTrainees={setTrainees} />;
       default:
-        return <Auth setUser={setUser} navigate={navigate} />;
+        return <Auth setUser={setUser} navigate={navigate} trainees={trainees} />;
     }
   };
 

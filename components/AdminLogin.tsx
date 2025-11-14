@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { View } from '../types';
 import { ADMIN_PASSWORD } from '../constants';
@@ -51,9 +50,6 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ navigate }) => {
             >
                 Back to Trainee Login
             </button>
-            <p className="mt-4 text-xs text-gray-400 text-center">
-                Hint: The password is <span className="font-mono font-semibold">{ADMIN_PASSWORD}</span>
-            </p>
         </div>
     );
 };

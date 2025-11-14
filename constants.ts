@@ -1,5 +1,19 @@
+import { ExamData, TraineeList } from './types';
 
-import { ExamData } from './types';
+export const TRAINEES: TraineeList = {
+  'jdelacruz': {
+    password: 'password123',
+    name: 'Juan Dela Cruz',
+    email: 'j.delacruz@cfmti.com',
+    id: ''
+  },
+  'msantos': {
+    password: 'password456',
+    name: 'Maria Santos',
+    email: '',
+    id: 'TID-MS-001'
+  }
+};
 
 export const ADMIN_PASSWORD = 'cfmadmin123';
 export const USER_KEY = 'cfmti_user_session';

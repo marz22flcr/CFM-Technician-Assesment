@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 // Fix: Import ModuleResult for type annotations.
-import { View, ExamRecord, SortKey, SortDirection, ModalState, FirestoreDB, Module, ModalDetails, ModuleResult } from '../types';
+// FIX: Import Trainee type to be used for explicit typing.
+import { View, ExamRecord, SortKey, SortDirection, ModalState, FirestoreDB, Module, ModalDetails, ModuleResult, TraineeList, Trainee } from '../types';
 import { listenForResults, clearAllResults } from '../services/firebaseService';
 import { exportCsv } from '../services/csvExporter';
 import { EXAM_DATA } from '../constants';
@@ -10,9 +11,168 @@ interface AdminSummaryProps {
   navigate: (view: View) => void;
   db: FirestoreDB | null;
   isFirebaseReady: boolean;
+  trainees: TraineeList;
+  setTrainees: React.Dispatch<React.SetStateAction<TraineeList>>;
 }
 
-const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseReady }) => {
+const EyeIcon: React.FC<{ slashed?: boolean }> = ({ slashed }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        {slashed ? (
+            <>
+                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                <line x1={1} y1={1} x2={23} y2={23} />
+            </>
+        ) : (
+            <>
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx={12} cy={12} r={3} />
+            </>
+        )}
+    </svg>
+);
+
+const TraineeManager: React.FC<{
+  trainees: TraineeList;
+  setTrainees: React.Dispatch<React.SetStateAction<TraineeList>>;
+}> = ({ trainees, setTrainees }) => {
+  const [newTrainee, setNewTrainee] = useState({ username: '', password: '', name: '', email: '', id: '' });
+  const [error, setError] = useState('');
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [traineeToDelete, setTraineeToDelete] = useState<string | null>(null);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewTrainee({ ...newTrainee, [e.target.name]: e.target.value });
+    setError('');
+  };
+
+  const handleAddTrainee = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTrainee.username || !newTrainee.password || !newTrainee.name) {
+      setError('Username, Password, and Name are required.');
+      return;
+    }
+    if (trainees[newTrainee.username]) {
+      setError('Username already exists.');
+      return;
+    }
+
+    setTrainees(prev => ({
+      ...prev,
+      [newTrainee.username.trim()]: {
+        password: newTrainee.password.trim(),
+        name: newTrainee.name.trim(),
+        email: newTrainee.email.trim(),
+        id: newTrainee.id.trim(),
+      }
+    }));
+    setNewTrainee({ username: '', password: '', name: '', email: '', id: '' });
+    setError('');
+  };
+
+  const handleDeleteTrainee = () => {
+    if (!traineeToDelete) return;
+    
+    setTrainees(prev => {
+        const updated = { ...prev };
+        delete updated[traineeToDelete];
+        return updated;
+    });
+    setTraineeToDelete(null);
+  };
+
+  const togglePasswordVisibility = (username: string) => {
+    setVisiblePasswords(prev => ({ ...prev, [username]: !prev[username] }));
+  };
+  
+  const inputStyle = "mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-cfm-blue focus:border-cfm-blue sm:text-sm";
+
+  return (
+    <div>
+      <div className="bg-gray-50 p-6 rounded-xl mb-8 shadow-inner">
+        <h3 className="text-xl font-bold text-cfm-dark mb-4">Add New Trainee</h3>
+        <form onSubmit={handleAddTrainee} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+          <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700">Username*</label>
+              <input type="text" name="username" id="username" value={newTrainee.username} onChange={handleInputChange} className={inputStyle} required />
+          </div>
+          <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password*</label>
+              <input type="text" name="password" id="password" value={newTrainee.password} onChange={handleInputChange} className={inputStyle} required />
+          </div>
+           <div>
+              <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name*</label>
+              <input type="text" name="name" id="name" value={newTrainee.name} onChange={handleInputChange} className={inputStyle} required />
+          </div>
+          <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+              <input type="email" name="email" id="email" value={newTrainee.email} onChange={handleInputChange} className={inputStyle} />
+          </div>
+           <div>
+              <label htmlFor="id" className="block text-sm font-medium text-gray-700">Trainee ID</label>
+              <input type="text" name="id" id="id" value={newTrainee.id} onChange={handleInputChange} className={inputStyle} />
+          </div>
+
+          <button type="submit" className="bg-success text-white py-2 px-4 rounded-lg font-semibold hover:bg-green-700 transition duration-150 shadow-md h-10">Add Trainee</button>
+        </form>
+        {error && <p className="text-sm text-error font-medium mt-2">{error}</p>}
+      </div>
+
+      <h3 className="text-xl font-bold text-cfm-dark mb-4">Existing Trainees ({Object.keys(trainees).length})</h3>
+       <div className="overflow-x-auto bg-gray-50 rounded-xl shadow-inner">
+         <table className="min-w-full divide-y divide-gray-200">
+           <thead className="bg-cfm-light">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-cfm-dark uppercase tracking-wider">Username</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-cfm-dark uppercase tracking-wider">Name</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-cfm-dark uppercase tracking-wider">Email/ID</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-cfm-dark uppercase tracking-wider">Password</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-cfm-dark uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+             <tbody className="bg-white divide-y divide-gray-100">
+             {Object.keys(trainees).length === 0 ? (
+                <tr>
+                    <td colSpan={5} className="text-center py-10 text-gray-500">No trainees created yet.</td>
+                </tr>
+              // FIX: Explicitly type 'details' to resolve property access errors.
+             ) : Object.entries(trainees).map(([username, details]: [string, Trainee]) => (
+                <tr key={username}>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 font-mono">{username}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">{details.name}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">{details.email || details.id}</td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
+                        <div className="flex items-center space-x-2">
+                           <span className="font-mono">{visiblePasswords[username] ? details.password : '••••••••'}</span>
+                           <button onClick={() => togglePasswordVisibility(username)} className="text-gray-500 hover:text-cfm-blue" aria-label={`Show password for ${username}`}>
+                               <EyeIcon slashed={visiblePasswords[username]} />
+                           </button>
+                        </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
+                        <button onClick={() => setTraineeToDelete(username)} className="text-error hover:text-red-700 font-medium">Delete</button>
+                    </td>
+                </tr>
+             ))}
+             </tbody>
+         </table>
+        </div>
+        
+        {traineeToDelete && (
+            <ActionModal 
+                isVisible={true} 
+                title="Confirm Deletion" 
+                message={`Are you sure you want to delete the trainee "${traineeToDelete}"? This action cannot be undone.`} 
+                onConfirm={handleDeleteTrainee} 
+                onCancel={() => setTraineeToDelete(null)} 
+                showCancel={true} 
+            />
+        )}
+    </div>
+  );
+};
+
+
+const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseReady, trainees, setTrainees }) => {
   const [results, setResults] = useState<ExamRecord[]>([]);
   const [filterText, setFilterText] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('timestamp');
@@ -187,6 +347,11 @@ const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseRea
             </button>
           </>
         )}
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-xl p-8 mt-8 border-t-8 border-cfm-blue">
+        <h2 className="text-3xl font-bold text-cfm-dark mb-4">Trainee Credential Management</h2>
+        <TraineeManager trainees={trainees} setTrainees={setTrainees} />
       </div>
 
       {showClearConfirm && (
