@@ -4,29 +4,51 @@ import { FirestoreDB, ExamRecord, TraineeList, Trainee } from '../types';
 declare global {
   interface Window {
     firebase: any;
-    __app_id?: string;
-    __firebase_config?: string;
-    __initial_auth_token?: string;
+    firebaseConfig?: {
+      apiKey: string;
+      authDomain: string;
+      projectId: string;
+      storageBucket: string;
+      messagingSenderId: string;
+      appId: string;
+    };
+  }
+  namespace NodeJS {
+    interface ProcessEnv {
+      FIREBASE_API_KEY?: string;
+      FIREBASE_AUTH_DOMAIN?: string;
+      FIREBASE_PROJECT_ID?: string;
+      FIREBASE_STORAGE_BUCKET?: string;
+      FIREBASE_MESSAGING_SENDER_ID?: string;
+      FIREBASE_APP_ID?: string;
+    }
   }
 }
 
-const getEnv = () => ({
-  appId: typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id',
-  firebaseConfig: typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : null,
-  initialAuthToken: typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null,
-});
+const getEnv = () => {
+  const firebaseConfig = window.firebaseConfig;
+  
+  return {
+    appId: firebaseConfig?.projectId || 'default-app-id',
+    firebaseConfig: firebaseConfig,
+  };
+};
 
 const RESULTS_PATH = 'exam_results';
 const TRAINEES_PATH = 'trainees';
 
 export const initializeFirebase = (
   setDb: (db: FirestoreDB) => void,
-  setIsFirebaseReady: (isReady: boolean) => void
+  setIsFirebaseReady: (isReady: boolean) => void,
+  setFirebaseError: (error: string | null) => void
 ) => {
-  const { firebaseConfig, initialAuthToken } = getEnv();
+  const { firebaseConfig } = getEnv();
 
-  if (!firebaseConfig) {
-    console.error("Firebase configuration is missing.");
+  if (!firebaseConfig || Object.values(firebaseConfig).some(v => v.includes('REPLACE'))) {
+    const errorMsg = "Firebase not configured. To enable database features, please update credentials in index.html.";
+    console.info(errorMsg);
+    setFirebaseError(errorMsg);
+    setIsFirebaseReady(false);
     return;
   }
 
@@ -55,6 +77,7 @@ export const initializeFirebase = (
       if (user) {
         setDb(dbInstance);
         setIsFirebaseReady(true);
+        setFirebaseError(null);
       } else {
         setIsFirebaseReady(false);
       }
@@ -62,14 +85,22 @@ export const initializeFirebase = (
 
     const authenticate = async () => {
       try {
-        if (initialAuthToken) {
-          await authInstance.signInWithCustomToken(initialAuthToken);
-        } else {
-          await authInstance.signInAnonymously();
-        }
-      } catch (error) {
-        console.error("Firebase authentication failed, falling back to anonymous:", error);
         await authInstance.signInAnonymously();
+      } catch (error: any) {
+        let message: string;
+        const errorMessage = String(error.message || '');
+        const errorCode = String(error.code || '');
+        
+        if (errorCode === 'auth/operation-not-allowed') {
+            message = "Anonymous sign-in is disabled. Please enable it in your Firebase project's Authentication settings to save results online.";
+        } else if (errorMessage.includes('CONFIGURATION_NOT_FOUND')) {
+            message = `Connection Failed: Invalid Firebase configuration. Please verify that the config values in index.html exactly match the "Web app" configuration in your Firebase project settings. Also ensure you have created a Firestore database.`;
+        } else {
+            message = `Could not connect to Firebase. Running in offline mode. (Error: ${errorCode || 'UNKNOWN'})`
+        }
+        
+        setFirebaseError(message);
+        console.warn(message, error);
       }
     };
 
@@ -95,7 +126,7 @@ export const saveExamRecord = async (
   record: ExamRecord
 ) => {
   if (!db || !isFirebaseReady) {
-    console.error("Firestore not ready. Cannot save result.");
+    console.warn("Offline Mode: Exam record not saved. Please configure Firebase to save results.", record);
     return;
   }
   
@@ -105,6 +136,7 @@ export const saveExamRecord = async (
     console.log("Exam record successfully saved to Firestore.");
   } catch (e) {
     console.error("Error saving document to Firestore:", e);
+    throw e;
   }
 };
 
@@ -164,12 +196,12 @@ export const listenForTrainees = (
 };
 
 export const addTrainee = async (
-  db: FirestoreDB,
+  db: FirestoreDB | null,
   username: string,
   traineeData: Trainee
 ) => {
   if (!db) {
-    console.error("Firestore not ready. Cannot add trainee.");
+    console.warn(`Offline Mode: Trainee '${username}' not added. Please configure Firebase.`);
     return;
   }
   try {
@@ -183,11 +215,11 @@ export const addTrainee = async (
 };
 
 export const deleteTrainee = async (
-  db: FirestoreDB,
+  db: FirestoreDB | null,
   username: string
 ) => {
   if (!db) {
-    console.error("Firestore not ready. Cannot delete trainee.");
+    console.warn(`Offline Mode: Trainee '${username}' not deleted. Please configure Firebase.`);
     return;
   }
   try {

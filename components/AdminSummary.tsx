@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 // Fix: Import ModuleResult for type annotations.
 // FIX: Import Trainee type to be used for explicit typing.
@@ -6,6 +7,7 @@ import { listenForResults, clearAllResults, addTrainee, deleteTrainee } from '..
 import { exportCsv } from '../services/csvExporter';
 import { EXAM_DATA } from '../constants';
 import ActionModal from './ActionModal';
+import { WarningIcon } from './Icons';
 
 interface AdminSummaryProps {
   navigate: (view: View) => void;
@@ -30,32 +32,113 @@ const EyeIcon: React.FC<{ slashed?: boolean }> = ({ slashed }) => (
     </svg>
 );
 
-const TraineeManager: React.FC<{
+interface TraineeManagerProps {
   trainees: TraineeList;
   db: FirestoreDB | null;
-}> = ({ trainees, db }) => {
+  isFirebaseReady: boolean;
+  setModalState: React.Dispatch<React.SetStateAction<ModalState | null>>;
+}
+
+const TraineeManager: React.FC<TraineeManagerProps> = ({ trainees, db, isFirebaseReady, setModalState }) => {
   const [newTrainee, setNewTrainee] = useState({ username: '', password: '', name: '', email: '', id: '' });
-  const [error, setError] = useState('');
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [traineeToDelete, setTraineeToDelete] = useState<string | null>(null);
 
+  // Centralized validation logic, returns error string or empty string for success.
+  const getValidationError = (name: string, value: string): string => {
+    switch (name) {
+      case 'username': {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Username is required.';
+        if (trimmed.length < 3) return 'Username must be at least 3 characters long.';
+        if (/\s/.test(trimmed)) return 'Username cannot contain spaces.';
+        if (trainees[trimmed]) return 'Username already exists.';
+        break;
+      }
+      case 'password': {
+        const trimmed = value.trim();
+        if (!trimmed) return 'Password is required.';
+        if (trimmed.length < 6) return 'Password must be at least 6 characters long.';
+        break;
+      }
+      case 'name':
+        if (!value.trim()) return 'Full Name is required.';
+        break;
+      case 'email':
+        const trimmed = value.trim();
+        if (trimmed && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+          return 'Please enter a valid email address.';
+        }
+        break;
+    }
+    return ''; // No error
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setNewTrainee({ ...newTrainee, [e.target.name]: e.target.value });
-    setError('');
+    const { name, value } = e.target;
+    setNewTrainee(prev => ({ ...prev, [name]: value }));
+
+    // If an error is currently shown for this field, re-validate on change
+    // to give immediate feedback that the user is fixing it.
+    if (errors[name]) {
+      const error = getValidationError(name, value);
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        if (error) {
+          newErrors[name] = error; // Update the error message if it still fails
+        } else {
+          delete newErrors[name]; // Clear the error as it's now valid
+        }
+        return newErrors;
+      });
+    }
+  };
+  
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    const error = getValidationError(name, value);
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      if (error) {
+        newErrors[name] = error;
+      } else {
+        delete newErrors[name];
+      }
+      return newErrors;
+    });
+  };
+
+  const validateForm = (): boolean => {
+    const { username, password, name, email } = newTrainee;
+    const validationErrors: Record<string, string> = {};
+
+    const usernameError = getValidationError('username', username);
+    if (usernameError) validationErrors.username = usernameError;
+
+    const passwordError = getValidationError('password', password);
+    if (passwordError) validationErrors.password = passwordError;
+
+    const nameError = getValidationError('name', name);
+    if (nameError) validationErrors.name = nameError;
+
+    const emailError = getValidationError('email', email);
+    if (emailError) validationErrors.email = emailError;
+
+    setErrors(validationErrors);
+    return Object.keys(validationErrors).length === 0;
   };
 
   const handleAddTrainee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!db) {
-      setError('Database connection not ready.');
+    
+    // Run full validation on submit and stop if invalid
+    if (!validateForm()) {
       return;
     }
-    if (!newTrainee.username || !newTrainee.password || !newTrainee.name) {
-      setError('Username, Password, and Name are required.');
-      return;
-    }
-    if (trainees[newTrainee.username]) {
-      setError('Username already exists.');
+    
+    if (!db || !isFirebaseReady) {
+      setErrors(prev => ({...prev, form: 'Database connection not ready. Please wait a moment.' }));
       return;
     }
 
@@ -68,23 +151,27 @@ const TraineeManager: React.FC<{
       };
       await addTrainee(db, newTrainee.username.trim(), traineeData);
       setNewTrainee({ username: '', password: '', name: '', email: '', id: '' });
-      setError('');
+      setErrors({});
     } catch (err) {
-      setError('Failed to add trainee. Please try again.');
+      setErrors({ form: 'Failed to add trainee. Please try again.' });
       console.error(err);
     }
   };
 
   const handleDeleteTrainee = async () => {
-    if (!traineeToDelete || !db) return;
+    if (!traineeToDelete || !db || !isFirebaseReady) return;
     
     try {
       await deleteTrainee(db, traineeToDelete);
       setTraineeToDelete(null);
     } catch (err) {
       console.error("Failed to delete trainee:", err);
-      // Optionally show an error modal to the user
       setTraineeToDelete(null);
+      setModalState({
+          title: "Deletion Failed",
+          message: `Could not delete trainee "${traineeToDelete}". Please check the connection and try again.`,
+          isError: true,
+      });
     }
   };
 
@@ -92,37 +179,48 @@ const TraineeManager: React.FC<{
     setVisiblePasswords(prev => ({ ...prev, [username]: !prev[username] }));
   };
   
-  const inputStyle = "mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-cfm-blue focus:border-cfm-blue sm:text-sm";
+  const inputBaseStyle = "mt-1 block w-full px-3 py-2 border rounded-lg shadow-sm focus:ring-cfm-blue focus:border-cfm-blue sm:text-sm";
+  const inputNormalStyle = "border-gray-300";
+  const inputErrorStyle = "border-error ring-1 ring-error";
 
   return (
     <div>
-      <div className="bg-gray-50 p-6 rounded-xl mb-8 shadow-inner">
+      <div className="bg-gray-50 p-6 rounded-xl mb-8 shadow-inner relative">
         <h3 className="text-xl font-bold text-cfm-dark mb-4">Add New Trainee</h3>
-        <form onSubmit={handleAddTrainee} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-          <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700">Username*</label>
-              <input type="text" name="username" id="username" value={newTrainee.username} onChange={handleInputChange} className={inputStyle} required />
-          </div>
-          <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password*</label>
-              <input type="text" name="password" id="password" value={newTrainee.password} onChange={handleInputChange} className={inputStyle} required />
-          </div>
-           <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name*</label>
-              <input type="text" name="name" id="name" value={newTrainee.name} onChange={handleInputChange} className={inputStyle} required />
-          </div>
-          <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
-              <input type="email" name="email" id="email" value={newTrainee.email} onChange={handleInputChange} className={inputStyle} />
-          </div>
-           <div>
-              <label htmlFor="id" className="block text-sm font-medium text-gray-700">Trainee ID</label>
-              <input type="text" name="id" id="id" value={newTrainee.id} onChange={handleInputChange} className={inputStyle} />
-          </div>
-
-          <button type="submit" className="bg-success text-white py-2 px-4 rounded-lg font-semibold hover:bg-green-700 transition duration-150 shadow-md h-10">Add Trainee</button>
+        <form onSubmit={handleAddTrainee} noValidate>
+          <fieldset disabled={!isFirebaseReady} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 items-start">
+              <div className="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 items-end">
+                <div>
+                    <label htmlFor="username" className="block text-sm font-medium text-gray-700">Username*</label>
+                    <input type="text" name="username" id="username" value={newTrainee.username} onChange={handleInputChange} onBlur={handleBlur} className={`${inputBaseStyle} ${errors.username ? inputErrorStyle : inputNormalStyle}`} required aria-invalid={!!errors.username} aria-describedby={errors.username ? "username-error" : undefined} />
+                    {errors.username && <p id="username-error" className="text-xs text-error mt-1">{errors.username}</p>}
+                </div>
+                <div>
+                    <label htmlFor="password" className="block text-sm font-medium text-gray-700">Password*</label>
+                    <input type="text" name="password" id="password" value={newTrainee.password} onChange={handleInputChange} onBlur={handleBlur} className={`${inputBaseStyle} ${errors.password ? inputErrorStyle : inputNormalStyle}`} required aria-invalid={!!errors.password} aria-describedby={errors.password ? "password-error" : undefined} />
+                    {errors.password && <p id="password-error" className="text-xs text-error mt-1">{errors.password}</p>}
+                </div>
+                 <div>
+                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">Full Name*</label>
+                    <input type="text" name="name" id="name" value={newTrainee.name} onChange={handleInputChange} onBlur={handleBlur} className={`${inputBaseStyle} ${errors.name ? inputErrorStyle : inputNormalStyle}`} required aria-invalid={!!errors.name} aria-describedby={errors.name ? "name-error" : undefined} />
+                    {errors.name && <p id="name-error" className="text-xs text-error mt-1">{errors.name}</p>}
+                </div>
+                <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" name="email" id="email" value={newTrainee.email} onChange={handleInputChange} onBlur={handleBlur} className={`${inputBaseStyle} ${errors.email ? inputErrorStyle : inputNormalStyle}`} aria-invalid={!!errors.email} aria-describedby={errors.email ? "email-error" : undefined} />
+                    {errors.email && <p id="email-error" className="text-xs text-error mt-1">{errors.email}</p>}
+                </div>
+                 <div>
+                    <label htmlFor="id" className="block text-sm font-medium text-gray-700">Trainee ID</label>
+                    <input type="text" name="id" id="id" value={newTrainee.id} onChange={handleInputChange} className={`${inputBaseStyle} ${inputNormalStyle}`} />
+                </div>
+                <button type="submit" className="bg-success text-white py-2 px-4 rounded-lg font-semibold hover:bg-green-700 transition duration-150 shadow-md h-10 disabled:bg-gray-400 disabled:cursor-not-allowed self-end">
+                  Add Trainee
+                </button>
+              </div>
+          </fieldset>
         </form>
-        {error && <p className="text-sm text-error font-medium mt-2">{error}</p>}
+        {errors.form && <p className="text-sm text-error font-medium mt-2">{errors.form}</p>}
       </div>
 
       <h3 className="text-xl font-bold text-cfm-dark mb-4">Existing Trainees ({Object.keys(trainees).length})</h3>
@@ -157,7 +255,7 @@ const TraineeManager: React.FC<{
                         </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-700">
-                        <button onClick={() => setTraineeToDelete(username)} className="text-error hover:text-red-700 font-medium">Delete</button>
+                        <button onClick={() => setTraineeToDelete(username)} className="text-error hover:text-red-700 font-medium disabled:text-gray-400 disabled:cursor-not-allowed" disabled={!isFirebaseReady}>Delete</button>
                     </td>
                 </tr>
              ))}
@@ -186,18 +284,24 @@ const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseRea
   const [sortBy, setSortBy] = useState<SortKey>('timestamp');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [modalState, setModalState] = useState<ModalState | null>(null);
 
   useEffect(() => {
-    if (!db || !isFirebaseReady) return;
+    if (!db || !isFirebaseReady) {
+      setLoading(false); // Stop loading if no DB connection
+      return;
+    }
     
     setLoading(true);
+    setFetchError(null);
     const unsubscribe = listenForResults(db, (fetchedResults) => {
       setResults(fetchedResults);
       setLoading(false);
     }, (error) => {
       console.error("Error fetching Firestore results:", error);
+      setFetchError("Could not load exam results. Please check your connection and refresh the page.");
       setLoading(false);
     });
 
@@ -294,6 +398,12 @@ const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseRea
                 <svg className="animate-spin h-5 w-5 text-cfm-blue" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 <span>Loading results from centralized database...</span>
             </div>
+        ) : fetchError ? (
+            <div className="text-center p-10 bg-red-50 text-error rounded-lg border border-error">
+                <WarningIcon className="h-12 w-12 mx-auto mb-2" />
+                <h3 className="font-bold text-lg mb-1">Failed to Load Data</h3>
+                <p>{fetchError}</p>
+            </div>
         ) : filteredAndSortedResults.length === 0 ? (
           <div className="text-center p-10 bg-gray-50 rounded-lg text-gray-500 font-medium">
             No exam results found.
@@ -359,7 +469,7 @@ const AdminSummary: React.FC<AdminSummaryProps> = ({ navigate, db, isFirebaseRea
 
       <div className="bg-white rounded-2xl shadow-xl p-8 mt-8 border-t-8 border-cfm-blue">
         <h2 className="text-3xl font-bold text-cfm-dark mb-4">Trainee Credential Management</h2>
-        <TraineeManager trainees={trainees} db={db} />
+        <TraineeManager trainees={trainees} db={db} isFirebaseReady={isFirebaseReady} setModalState={setModalState} />
       </div>
 
       {showClearConfirm && (

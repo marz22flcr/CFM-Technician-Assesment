@@ -1,10 +1,9 @@
 
-
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 // FIX: Corrected import name from INITIAL_TRAINEE to INITIAL_TRAINEES.
 import { INITIAL_TRAINEES, USER_KEY, EXAM_DATA } from './constants';
-import { View, User, ExamSession, ExamRecord, FirestoreDB, ModuleResult, TraineeList } from './types';
+// Fix: Add ModalState to types import
+import { View, User, ExamSession, ExamRecord, FirestoreDB, ModuleResult, TraineeList, ModalState } from './types';
 import { initializeFirebase, saveExamRecord, listenForTrainees, seedInitialTrainees } from './services/firebaseService';
 
 import Header from './components/Header';
@@ -14,6 +13,8 @@ import ModuleRunner from './components/ModuleRunner';
 import FinalReview from './components/FinalReview';
 import AdminLogin from './components/AdminLogin';
 import AdminSummary from './components/AdminSummary';
+// Fix: Import ActionModal for error popups
+import ActionModal from './components/ActionModal';
 
 const EXAM_DURATION_SECONDS = 60 * 60; // 60 minutes
 const EXAM_END_TIME_KEY = 'cfmti_exam_end_time';
@@ -42,27 +43,38 @@ const App: React.FC = () => {
 
   const [db, setDb] = useState<FirestoreDB | null>(null);
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
+  const [traineeFetchError, setTraineeFetchError] = useState(false);
+  const [modalState, setModalState] = useState<ModalState | null>(null);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
 
   const [examEndTime, setExamEndTime] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   useEffect(() => {
-    initializeFirebase(setDb, setIsFirebaseReady);
+    initializeFirebase(setDb, setIsFirebaseReady, setFirebaseError);
   }, []);
 
   useEffect(() => {
     let unsubscribe: () => void = () => {};
 
     if (db && isFirebaseReady) {
+        setTraineeFetchError(false);
         const setupTrainees = async () => {
             await seedInitialTrainees(db, INITIAL_TRAINEES);
             unsubscribe = listenForTrainees(
                 db,
                 (fetchedTrainees) => { setTrainees(fetchedTrainees); },
-                (error) => { console.error("Error fetching trainees:", error); }
+                (error) => { 
+                    console.error("Error fetching trainees:", error);
+                    setTraineeFetchError(true);
+                    setTrainees(INITIAL_TRAINEES); // Fallback to local data
+                }
             );
         };
         setupTrainees();
+    } else {
+        // If Firebase fails to initialize, fall back to initial trainees for offline mode.
+        setTrainees(INITIAL_TRAINEES);
     }
     return () => { unsubscribe(); };
   }, [db, isFirebaseReady]);
@@ -129,7 +141,17 @@ const App: React.FC = () => {
       totalPossible: finalTotalPossible
     };
     
-    await saveExamRecord(db, isFirebaseReady, record);
+    try {
+        await saveExamRecord(db, isFirebaseReady, record);
+    } catch(error) {
+        console.error("Failed to save exam record:", error);
+        setModalState({
+            title: "Save Error",
+            message: "Your exam results could not be saved to the database. You can review your results now, but they will be lost when you log out.",
+            isError: true,
+        });
+    }
+
     clearTimer();
     return record;
   }, [examSession, user, db, isFirebaseReady, clearTimer]);
@@ -217,6 +239,13 @@ const App: React.FC = () => {
         return <Auth setUser={setUser} navigate={navigate} trainees={trainees} />;
     }
   };
+  
+  const isOffline = !isFirebaseReady || traineeFetchError;
+  const offlineMessage = firebaseError
+    ? firebaseError
+    : traineeFetchError
+    ? "Error loading trainee data. Using local fallback. Results may not save correctly."
+    : "Offline Mode: Database not connected. Results will not be saved.";
 
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
@@ -233,10 +262,19 @@ const App: React.FC = () => {
       <footer className="w-full bg-cfm-dark text-white text-center py-4 text-sm font-light mt-10">
         &copy; {new Date().getFullYear()} CFM Training Institute Inc. Assessment System.
       </footer>
-      {!isFirebaseReady && (view === 'admin' || (view === 'lobby' && user)) && (
-         <div className="fixed bottom-0 left-0 right-0 bg-yellow-400 text-sm text-center py-1 font-medium">
-             Initializing secure connection...
+      {(isOffline || firebaseError) && (view === 'admin' || view === 'auth' || (view === 'lobby' && user)) && (
+         <div className="fixed bottom-0 left-0 right-0 bg-yellow-400 text-sm text-center py-1 font-medium z-50 px-2">
+             {offlineMessage}
          </div>
+      )}
+      {modalState && (
+        <ActionModal
+          isVisible={true}
+          title={modalState.title}
+          message={modalState.message}
+          onConfirm={() => setModalState(null)}
+          showCancel={false}
+        />
       )}
     </div>
   );
