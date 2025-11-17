@@ -2,6 +2,7 @@
 
 
 
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 // FIX: Corrected import name from INITIAL_TRAINEE to INITIAL_TRAINEES.
 import { INITIAL_TRAINEES, USER_KEY, EXAM_DATA } from './constants';
@@ -253,14 +254,17 @@ const App: React.FC = () => {
   };
   
   const isOffline = !isFirebaseReady || traineeFetchError;
+  
+  // A simple check to see if the error is a critical setup/config issue.
+  const isSetupError = firebaseError && firebaseError.includes('SETUP REQUIRED');
+  const isConfigError = firebaseError && firebaseError.startsWith('SETUP_CONFIG');
+
   const offlineMessage = firebaseError
     ? firebaseError
     : traineeFetchError
     ? "Error loading trainee data. Using local fallback. Results may not save correctly."
     : "Offline Mode: Database not connected. Results will not be saved.";
 
-  // A simple check to see if the error is a critical setup/config issue.
-  const isSetupError = firebaseError && firebaseError.includes('SETUP REQUIRED');
 
   // Helper to render error messages with clickable links for the bottom banner.
   const renderFirebaseError = (errorMessage: string) => {
@@ -286,6 +290,49 @@ const App: React.FC = () => {
           return <span key={index}>{part}</span>;
         })}
       </>
+    );
+  };
+  
+  const renderConfigSetupScreen = () => {
+    const setupSteps = [
+      "Go to the <a href='https://console.firebase.google.com/' target='_blank' rel='noopener noreferrer' class='font-bold underline'>Firebase Console</a> and click on your project (e.g., <strong>CFMTraining</strong>).",
+      "In your Project Overview, click the <strong>Web icon (&lt;/&gt;)</strong> to add a web app.",
+      "Give your app a nickname (e.g., 'CFM Assessment') and click <strong>'Register app'</strong>. You don't need to do the other setup steps on that page.",
+      "Firebase will show you a block of code with a <code>firebaseConfig</code> object. Click the copy icon to copy the entire object.",
+      "Open the <code>index.html</code> file in this project.",
+      "Replace the placeholder <code>window.firebaseConfig</code> object with the one you just copied.",
+    ];
+
+    return (
+        <div className="fixed inset-0 bg-cfm-light flex items-center justify-center z-50 p-4">
+            <div className="max-w-3xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center border-t-8 border-cfm-blue animate-fade-in">
+                <WrenchIcon className="h-16 w-16 text-cfm-blue mx-auto mb-4" />
+                <h2 className="text-3xl md:text-4xl font-extrabold text-cfm-dark">Connect Your Firebase Project</h2>
+                <p className="text-gray-600 text-lg mt-2 mb-6">Let's get the configuration keys to link this app to your new project.</p>
+
+                <div className="bg-gray-50 p-6 rounded-lg mt-6 shadow-inner text-left">
+                    <h3 className="font-bold text-xl text-cfm-dark mb-4">Follow These 6 Steps:</h3>
+                    <ol className="list-decimal list-inside space-y-4 text-gray-700">
+                        {setupSteps.map((step, index) => (
+                            <li key={index} className="flex items-start">
+                                <span className="flex items-center justify-center bg-cfm-blue text-white rounded-full font-bold text-sm h-6 w-6 mr-3 flex-shrink-0 mt-0.5">{index + 1}</span>
+                                <span dangerouslySetInnerHTML={{ __html: step }} />
+                            </li>
+                        ))}
+                    </ol>
+                </div>
+                
+                <div className="mt-8">
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="w-full md:w-auto inline-flex items-center justify-center bg-success text-white py-4 px-8 rounded-lg text-lg font-bold hover:bg-green-700 transition duration-150 shadow-lg"
+                    >
+                        I've Updated The Config, Refresh App!
+                    </button>
+                </div>
+                 <p className="text-xs text-gray-400 mt-6">After you refresh, the app might guide you through one more step to create your database.</p>
+            </div>
+        </div>
     );
   };
   
@@ -344,6 +391,10 @@ const App: React.FC = () => {
     );
 };
   
+  if (isConfigError) {
+      return renderConfigSetupScreen();
+  }
+  
   if (isSetupError && firebaseError) {
       return renderSetupErrorScreen(firebaseError);
   }
@@ -363,7 +414,7 @@ const App: React.FC = () => {
       <footer className="w-full bg-cfm-dark text-white text-center py-4 text-sm font-light mt-10">
         &copy; {new Date().getFullYear()} CFM Training Institute Inc. Assessment System.
       </footer>
-      {(isOffline || firebaseError) && !isSetupError && (view === 'admin' || view === 'auth' || (view === 'lobby' && user)) && (
+      {(isOffline || firebaseError) && !isSetupError && !isConfigError && (view === 'admin' || view === 'auth' || (view === 'lobby' && user)) && (
          <div className="fixed bottom-0 left-0 right-0 z-50 px-4 py-3 font-medium flex items-center justify-center text-center bg-yellow-400 text-black">
              <div className="text-sm">{renderFirebaseError(offlineMessage)}</div>
          </div>

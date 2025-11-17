@@ -1,7 +1,3 @@
-
-
-
-
 import { FirestoreDB, ExamRecord, TraineeList, Trainee } from '../types';
 
 declare global {
@@ -48,7 +44,7 @@ export const initializeFirebase = (
   const { firebaseConfig } = getEnv();
 
   if (!firebaseConfig || Object.values(firebaseConfig).some(v => v.includes('REPLACE'))) {
-    const errorMsg = "Firebase not configured. To enable database features, please update credentials in index.html.";
+    const errorMsg = "SETUP_CONFIG: Firebase configuration is missing. Follow the steps in the application to connect your project.";
     console.info(errorMsg);
     setFirebaseError(errorMsg);
     setIsFirebaseReady(false);
