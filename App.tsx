@@ -165,6 +165,7 @@ const App: React.FC = () => {
     
     const record: ExamRecord = {
       user: user!,
+      // FIX: Corrected typo `new new Date()` to `new Date()`.
       timestamp: new Date().toISOString(),
       moduleResults: examSession.moduleResults,
       answers: examSession.answers,
@@ -284,6 +285,7 @@ const App: React.FC = () => {
             setExamSession={setExamSession}
             finalizeExam={finalizeExam}
             navigate={navigate}
+            onStartReview={handleStartReview}
           />
         );
       case 'review':

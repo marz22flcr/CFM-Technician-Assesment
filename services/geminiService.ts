@@ -9,16 +9,27 @@ export const startReviewChatSession = async (module: Module) => {
         // This relies on the API_KEY being available in the execution environment.
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-        const questionTopics = module.questions.map((q, i) => `${i + 1}. ${q.text}`).join('\n');
-        const systemInstruction = `You are "CFM-AI", an expert AI tutor for refrigeration and air conditioning technicians.
-You are helping a trainee review the module titled "${module.title}".
-Your goal is to help them understand the key concepts. Use the following questions from the module as context for the topics you should be an expert in:
-${questionTopics}
+        const detailedContext = module.questions.map((q, i) => {
+            const choicesText = Object.entries(q.choices).map(([key, value]) => `  ${key}) ${value}`).join('\n');
+            return `Question ${i + 1}: ${q.text}\n${choicesText}\nCorrect Answer: ${q.correct}`;
+        }).join('\n\n');
 
-Be encouraging, clear, and helpful. Guide the trainee toward understanding the principles. If they ask for an answer directly, explain the underlying concept instead of just giving the answer.`;
+        const systemInstruction = `You are "CFM-AI", a specialized AI tutor for refrigeration and air conditioning technicians. Your current task is to help a trainee master the module: "${module.title}".
+
+Your entire knowledge base for this session consists of the following questions, choices, and correct answers from the module:
+---
+${detailedContext}
+---
+
+Your primary role is to be a supportive and expert guide. When the trainee asks a question, you MUST use your knowledge base to inform your explanation. If their question relates to one of the topics, you can reference the concept to ground your explanation in the curriculum. For example, if they ask about 'superheat', you could say "That's a great question, it's a key concept for diagnosing if a system is running properly, like in the question about checking the refrigerant charge."
+
+**CRITICAL RULE:** You must NEVER reveal the letter of the correct answer (e.g., "The answer is B"). Your purpose is to teach the underlying principles so the trainee can figure out the answer themselves. Explain the 'why' behind the correct concept. If a user asks "What is the answer to question 5?", you should respond by explaining the concept behind question 5.
+
+Be encouraging, use clear language, and break down complex topics into simple steps. Use Markdown formatting like lists, bold text, and headings to make your explanations easy to read and understand.`;
+
 
         activeChat = ai.chats.create({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.5-pro',
             config: {
                 systemInstruction: systemInstruction,
             }

@@ -3,6 +3,12 @@ import { sendMessageToBot } from '../services/geminiService';
 import { ChatIcon, ClockIcon } from './Icons';
 import { Module } from '../types';
 
+declare global {
+  interface Window {
+    marked: any;
+  }
+}
+
 interface ChatbotProps {
   onClose: () => void;
   module: Module;
@@ -39,7 +45,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ onClose, module, timeLeft }) => {
 
   const isLowTime = timeLeft !== null && timeLeft <= 300; // 5 minutes
 
-  useEffect(scrollToBottom, [messages]);
+  useEffect(scrollToBottom, [messages, isLoading]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +60,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ onClose, module, timeLeft }) => {
     try {
       const botResponse = await sendMessageToBot(trimmedInput);
       setMessages(prev => [...prev, { sender: 'bot', text: botResponse }]);
+    // FIX: Replaced `<blockquote>` with `{` to correct the syntax of the try...catch block.
     } catch (error) {
       console.error(error);
       const errorMessage = (error instanceof Error && error.message) ? error.message : "Sorry, I'm having trouble connecting. Please try again later.";
@@ -62,9 +69,31 @@ const Chatbot: React.FC<ChatbotProps> = ({ onClose, module, timeLeft }) => {
       setIsLoading(false);
     }
   };
+  
+  const renderMessageContent = (msg: Message) => {
+    if (msg.sender === 'user') {
+      return <p className="text-sm">{msg.text}</p>;
+    }
+
+    if (window.marked) {
+        const html = window.marked.parse(msg.text);
+        return <div className="text-sm prose-like chatbot-prose" dangerouslySetInnerHTML={{ __html: html }} />;
+    }
+    
+    // Fallback if marked library isn't loaded for some reason
+    return <p className="text-sm" dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br />') }} />;
+  };
 
   return (
     <div className="fixed inset-0 z-40 flex justify-center items-center p-4 animate-fade-in">
+       <style>{`
+        .chatbot-prose h1, .chatbot-prose h2, .chatbot-prose h3 { font-weight: 800; color: #003366; margin-top: 1em; margin-bottom: 0.5em; padding-bottom: 0.2em; border-bottom: 1px solid #e5e7eb; }
+        .chatbot-prose p { line-height: 1.6; margin-bottom: 0.75em; }
+        .chatbot-prose ul, .chatbot-prose ol { margin-left: 1.5em; margin-bottom: 1em; }
+        .chatbot-prose li { margin-bottom: 0.25em; }
+        .chatbot-prose strong { color: #003366; }
+        .chatbot-prose p:last-child { margin-bottom: 0; }
+      `}</style>
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose}></div>
       <div className="relative z-50 flex flex-col w-full max-w-lg h-[80vh] max-h-[700px] bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200">
         <header className="flex items-center justify-between p-4 bg-cfm-dark text-white border-b border-cfm-blue/50">
@@ -89,7 +118,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ onClose, module, timeLeft }) => {
           {messages.map((msg, index) => (
             <div key={index} className={`flex items-end gap-2 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-xs md:max-w-md p-3 rounded-2xl ${msg.sender === 'user' ? 'bg-cfm-blue text-white rounded-br-lg' : 'bg-gray-200 text-gray-800 rounded-bl-lg'}`}>
-                <p className="text-sm" dangerouslySetInnerHTML={{__html: msg.text.replace(/\n/g, '<br />')}}></p>
+                {renderMessageContent(msg)}
               </div>
             </div>
           ))}

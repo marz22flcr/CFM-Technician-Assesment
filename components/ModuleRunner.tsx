@@ -1,8 +1,7 @@
-
 import React, { useState, useCallback } from 'react';
 import { View, Module, ExamSession, ModuleResult, ExamRecord } from '../types';
 import QuestionCard from './QuestionCard';
-import { WarningIcon } from './Icons';
+import { WarningIcon, ChatIcon } from './Icons';
 import ActionModal from './ActionModal';
 
 interface ModuleRunnerProps {
@@ -11,9 +10,10 @@ interface ModuleRunnerProps {
   setExamSession: React.Dispatch<React.SetStateAction<ExamSession>>;
   finalizeExam: () => Promise<ExamRecord>;
   navigate: (view: View, data?: any) => void;
+  onStartReview: (module: Module) => void;
 }
 
-const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setExamSession, finalizeExam, navigate }) => {
+const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setExamSession, finalizeExam, navigate, onStartReview }) => {
   const currentModule = modules[examSession.currentModuleIndex];
   const totalModules = modules.length;
 
@@ -96,6 +96,11 @@ const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setEx
     }
   };
 
+  const handleStartReview = () => {
+    setShowScoreModal(false);
+    onStartReview(currentModule);
+  };
+
   return (
     <div className="max-w-4xl mx-auto my-8 px-4">
       <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border-l-4 border-cfm-dark">
@@ -157,20 +162,32 @@ const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setEx
 
       {showScoreModal && moduleScore && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md text-center">
             <h3 className="text-3xl font-extrabold text-cfm-dark mb-2">Module Submitted!</h3>
-            <p className="text-xl text-gray-600 mb-6">{currentModule.title}</p>
-            <div className="p-6 bg-cfm-light rounded-xl mb-6">
+            <p className="text-lg text-gray-600 mb-6">{currentModule.title}</p>
+            <div className="p-6 bg-cfm-light rounded-xl mb-8">
               <p className="text-lg font-medium text-gray-700">Your Score:</p>
               <p className="text-5xl font-black text-success mt-1">{moduleScore.score} / {moduleScore.total}</p>
               <p className="text-sm text-gray-500 mt-2">({((moduleScore.score / moduleScore.total) * 100).toFixed(1)}%)</p>
             </div>
-            <button
-              onClick={handleNextModule}
-              className="w-full bg-cfm-blue text-white py-3 px-4 rounded-lg font-semibold hover:bg-cfm-dark transition duration-150 shadow-md"
-            >
-              {examSession.currentModuleIndex === totalModules - 1 ? 'Finish Exam' : 'Proceed to Next Module'}
-            </button>
+
+            <p className="text-gray-700 font-medium mb-4">What would you like to do next?</p>
+            
+            <div className="space-y-3">
+              <button
+                onClick={handleNextModule}
+                className="w-full bg-cfm-blue text-white py-3 px-4 rounded-lg font-semibold hover:bg-cfm-dark transition duration-150 shadow-md"
+              >
+                {examSession.currentModuleIndex === totalModules - 1 ? 'Finish Exam & View Results' : 'Continue to Next Module'}
+              </button>
+              <button
+                onClick={handleStartReview}
+                className="w-full bg-gray-200 text-gray-700 py-3 px-4 rounded-lg font-semibold hover:bg-gray-300 transition duration-150 flex items-center justify-center space-x-2"
+              >
+                <ChatIcon className="h-5 w-5" />
+                <span>Review this module with AI Tutor</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
