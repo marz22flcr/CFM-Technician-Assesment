@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 // Fix: Import ModuleResult for type annotations.
 import { View, ExamRecord, Module, ModuleResult } from '../types';
 import ActionModal from './ActionModal';
@@ -12,6 +13,7 @@ interface FinalReviewProps {
 
 const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'correct' | 'incorrect'>('all');
 
   if (!examRecord) {
     return <div className="text-center text-gray-600 mt-10">Loading results... If this persists, please start a new session.</div>;
@@ -21,7 +23,7 @@ const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate
   const percentage = totalPossible > 0 ? ((totalScore / totalPossible) * 100).toFixed(2) : '0.00';
   const isPassing = parseFloat(percentage) >= 70;
 
-  const reviewData = modules.flatMap(mod =>
+  const reviewData = useMemo(() => modules.flatMap(mod =>
     mod.questions.map((q, qIdx) => ({
       moduleTitle: mod.title,
       questionNum: qIdx + 1,
@@ -30,12 +32,38 @@ const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate
       correctAnswer: q.correct,
       isCorrect: answers[q.id] === q.correct,
     }))
-  );
+  ), [modules, answers]);
+
+  const filteredReviewData = useMemo(() => reviewData.filter(item => {
+    if (filter === 'correct') return item.isCorrect;
+    if (filter === 'incorrect') return !item.isCorrect;
+    return true; // for 'all'
+  }), [reviewData, filter]);
 
   const handleLogout = () => {
     localStorage.removeItem(USER_KEY);
     setShowLogoutConfirm(false);
     navigate('auth');
+  };
+
+  const FilterButton: React.FC<{
+    currentFilter: typeof filter;
+    filterType: typeof filter;
+    count: number;
+    onClick: () => void;
+    children: React.ReactNode;
+    color: string;
+  }> = ({ currentFilter, filterType, count, onClick, children, color }) => {
+    const isActive = currentFilter === filterType;
+    const baseStyle = 'px-4 py-2 text-sm font-semibold rounded-lg transition duration-150 flex items-center space-x-2';
+    const activeStyle = `text-white shadow-md ${color}`;
+    const inactiveStyle = 'bg-gray-200 text-gray-700 hover:bg-gray-300';
+    return (
+      <button onClick={onClick} className={`${baseStyle} ${isActive ? activeStyle : inactiveStyle}`}>
+        <span>{children}</span>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-mono ${isActive ? 'bg-white/20' : 'bg-gray-300'}`}>{count}</span>
+      </button>
+    );
   };
 
   return (
@@ -71,7 +99,15 @@ const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate
           </div>
         </div>
 
-        <h3 className="text-2xl font-bold text-cfm-dark mt-10 mb-4 border-b pb-2">Detailed Answer Review</h3>
+        <div className="flex items-center justify-between mt-10 mb-4 border-b pb-2">
+          <h3 className="text-2xl font-bold text-cfm-dark">Detailed Answer Review</h3>
+          <div className="flex space-x-2">
+            <FilterButton currentFilter={filter} filterType="all" count={reviewData.length} onClick={() => setFilter('all')} color="bg-cfm-blue">All</FilterButton>
+            <FilterButton currentFilter={filter} filterType="correct" count={reviewData.filter(i => i.isCorrect).length} onClick={() => setFilter('correct')} color="bg-success">Correct</FilterButton>
+            <FilterButton currentFilter={filter} filterType="incorrect" count={reviewData.filter(i => !i.isCorrect).length} onClick={() => setFilter('incorrect')} color="bg-error">Incorrect</FilterButton>
+          </div>
+        </div>
+
         <div className="overflow-x-auto bg-gray-50 rounded-xl shadow-inner max-h-96">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-cfm-light sticky top-0">
@@ -84,7 +120,11 @@ const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {reviewData.map((item, index) => (
+              {filteredReviewData.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-10 text-gray-500 italic">No {filter} answers to display.</td>
+                </tr>
+              ) : filteredReviewData.map((item, index) => (
                 <tr key={index} className={item.isCorrect ? 'hover:bg-green-50/50' : 'bg-red-50/50 hover:bg-red-100/70'}>
                   <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     M{modules.findIndex(m => m.title === item.moduleTitle) + 1}

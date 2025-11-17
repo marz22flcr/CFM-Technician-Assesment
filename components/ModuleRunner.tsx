@@ -73,6 +73,13 @@ const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setEx
     }
   };
 
+  const handlePrevious = () => {
+    if (currentQIndex > 0) {
+      setCurrentQIndex(prev => prev - 1);
+      setUnselectedError(false);
+    }
+  };
+
   const handleNextModule = async () => {
     setShowScoreModal(false);
     
@@ -110,17 +117,24 @@ const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setEx
         totalQuestions={currentModule.questions.length}
       />
       
-      <div className="flex flex-col sm:flex-row justify-end items-center space-x-0 sm:space-x-4 p-4 bg-white/70 backdrop-blur-sm sticky bottom-0 rounded-t-xl shadow-inner border-t">
+      <div className="flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0 sm:space-x-4 p-4 bg-white/70 backdrop-blur-sm sticky bottom-0 rounded-t-xl shadow-inner border-t">
         {unselectedError && (
-            <p className="flex items-center text-error font-medium mb-3 sm:mb-0 sm:mr-auto p-2 bg-red-100 rounded-lg">
+            <p className="flex items-center text-error font-medium sm:mr-auto p-2 bg-red-100 rounded-lg w-full sm:w-auto justify-center">
                 <WarningIcon className="h-5 w-5 mr-2" />
                 Please select an option to proceed.
             </p>
         )}
-        <div className="w-full sm:w-auto" style={{marginLeft: unselectedError ? '' : 'auto'}}>
+        <div className="flex w-full sm:w-auto" style={{marginLeft: unselectedError ? '' : 'auto'}}>
+            <button
+              onClick={handlePrevious}
+              className="w-1/2 sm:w-auto px-8 py-3 rounded-l-lg font-semibold bg-gray-200 text-gray-700 hover:bg-gray-300 transition duration-150 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed"
+              disabled={isModuleSubmitted || currentQIndex === 0}
+            >
+              Previous
+            </button>
             <button
                 onClick={handleNext}
-                className={`w-full sm:w-auto px-8 py-3 rounded-lg font-semibold text-white shadow-md transition duration-150 ${!isModuleSubmitted ? 'bg-cfm-blue hover:bg-cfm-dark' : 'bg-gray-400 cursor-not-allowed'}`}
+                className={`w-1/2 sm:w-auto px-8 py-3 rounded-r-lg font-semibold text-white shadow-md transition duration-150 ${!isModuleSubmitted ? 'bg-cfm-blue hover:bg-cfm-dark' : 'bg-gray-400 cursor-not-allowed'}`}
                 disabled={isModuleSubmitted}
             >
                 {isLastQuestionInModule ? 'Submit Module' : 'Next Question'}

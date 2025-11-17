@@ -1,4 +1,7 @@
 
+
+
+
 import { FirestoreDB, ExamRecord, TraineeList, Trainee } from '../types';
 
 declare global {
@@ -73,38 +76,49 @@ export const initializeFirebase = (
       doc: (...path: string[]) => firestoreDb.doc(path.join('/')),
     };
 
-    authInstance.onAuthStateChanged((user: any) => {
-      if (user) {
+    const authenticateAndVerify = async () => {
+      try {
+        await authInstance.signInAnonymously();
+        // After auth, verify firestore is usable.
+        // This will throw errors if the API is not enabled OR if a DB doesn't exist.
+        await firestoreDb.collection('_test_').doc('_test_').get({ source: 'server' });
+
+        // If we get here, both auth and firestore are working.
         setDb(dbInstance);
         setIsFirebaseReady(true);
         setFirebaseError(null);
-      } else {
-        setIsFirebaseReady(false);
-      }
-    });
-
-    const authenticate = async () => {
-      try {
-        await authInstance.signInAnonymously();
       } catch (error: any) {
         let message: string;
         const errorMessage = String(error.message || '');
         const errorCode = String(error.code || '');
+        const projectId = firebaseConfig?.projectId || 'your-project-id';
         
-        if (errorCode === 'auth/operation-not-allowed') {
+        // Specific error for database not existing
+        if (errorCode === 'not-found' && errorMessage.includes('database (default) does not exist')) {
+            const url = `https://console.cloud.google.com/datastore/setup?project=${projectId}`;
+            message = `SETUP REQUIRED: Your project's database has not been created. Please use this link to complete the one-time setup: ${url}`;
+        }
+        // Specific error for Firestore API not enabled
+        else if (errorCode === 'permission-denied' && errorMessage.includes('Cloud Firestore API has not been used')) {
+            const url = `https://console.developers.google.com/apis/api/firestore.googleapis.com/overview?project=${projectId}`;
+            message = `SETUP REQUIRED: The Firestore API is disabled for your project. Please use this link to enable it, then refresh: ${url}`;
+        } 
+        // Other existing setup/connection errors
+        else if (errorCode === 'auth/operation-not-allowed') {
             message = "Anonymous sign-in is disabled. Please enable it in your Firebase project's Authentication settings to save results online.";
         } else if (errorMessage.includes('CONFIGURATION_NOT_FOUND')) {
             message = `Connection Failed: Invalid Firebase configuration. Please verify that the config values in index.html exactly match the "Web app" configuration in your Firebase project settings. Also ensure you have created a Firestore database.`;
         } else {
-            message = `Could not connect to Firebase. Running in offline mode. (Error: ${errorCode || 'UNKNOWN'})`
+            message = `Could not connect to Firebase. Running in offline mode. (Error: ${errorMessage || errorCode || 'UNKNOWN'})`;
         }
         
         setFirebaseError(message);
+        setIsFirebaseReady(false);
         console.warn(message, error);
       }
     };
 
-    authenticate();
+    authenticateAndVerify();
   };
 
   checkAndInitialize();
@@ -252,5 +266,6 @@ export const seedInitialTrainees = async (db: FirestoreDB, initialTrainees: Trai
         }
     } catch (e) {
         console.error("Error seeding trainees:", e);
+        throw e;
     }
 };

@@ -1,4 +1,7 @@
 
+
+
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 // FIX: Corrected import name from INITIAL_TRAINEE to INITIAL_TRAINEES.
 import { INITIAL_TRAINEES, USER_KEY, EXAM_DATA } from './constants';
@@ -15,6 +18,7 @@ import AdminLogin from './components/AdminLogin';
 import AdminSummary from './components/AdminSummary';
 // Fix: Import ActionModal for error popups
 import ActionModal from './components/ActionModal';
+import { WrenchIcon } from './components/Icons';
 
 const EXAM_DURATION_SECONDS = 60 * 60; // 60 minutes
 const EXAM_END_TIME_KEY = 'cfmti_exam_end_time';
@@ -60,16 +64,24 @@ const App: React.FC = () => {
     if (db && isFirebaseReady) {
         setTraineeFetchError(false);
         const setupTrainees = async () => {
-            await seedInitialTrainees(db, INITIAL_TRAINEES);
-            unsubscribe = listenForTrainees(
-                db,
-                (fetchedTrainees) => { setTrainees(fetchedTrainees); },
-                (error) => { 
-                    console.error("Error fetching trainees:", error);
-                    setTraineeFetchError(true);
-                    setTrainees(INITIAL_TRAINEES); // Fallback to local data
-                }
-            );
+            try {
+                await seedInitialTrainees(db, INITIAL_TRAINEES);
+                unsubscribe = listenForTrainees(
+                    db,
+                    (fetchedTrainees) => { setTrainees(fetchedTrainees); },
+                    (error) => { 
+                        console.error("Error fetching trainees:", error);
+                        setTraineeFetchError(true);
+                        setTrainees(INITIAL_TRAINEES); // Fallback to local data
+                    }
+                );
+            } catch (error: any) {
+                // Simplified catch block. Specific config errors are now handled in initializeFirebase.
+                // This will catch transient network errors during seeding.
+                console.error("Caught error during trainee setup:", error);
+                setTraineeFetchError(true);
+                setTrainees(INITIAL_TRAINEES);
+            }
         };
         setupTrainees();
     } else {
@@ -247,6 +259,95 @@ const App: React.FC = () => {
     ? "Error loading trainee data. Using local fallback. Results may not save correctly."
     : "Offline Mode: Database not connected. Results will not be saved.";
 
+  // A simple check to see if the error is a critical setup/config issue.
+  const isSetupError = firebaseError && firebaseError.includes('SETUP REQUIRED');
+
+  // Helper to render error messages with clickable links for the bottom banner.
+  const renderFirebaseError = (errorMessage: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = errorMessage.split(urlRegex);
+
+    return (
+      <>
+        {parts.map((part, index) => {
+          if (part.match(urlRegex)) {
+            return (
+              <a 
+                key={index} 
+                href={part} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="font-bold underline hover:text-black/80"
+              >
+                {part}
+              </a>
+            );
+          }
+          return <span key={index}>{part}</span>;
+        })}
+      </>
+    );
+  };
+  
+  const renderSetupErrorScreen = (errorMessage: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/;
+    const match = errorMessage.match(urlRegex);
+    const url = match ? match[0] : null;
+
+    const setupSteps = [
+        "A new tab will open. In it, click the large blue **CREATE DATABASE** button.",
+        "A side panel will appear. Choose **Native Mode** and click **NEXT**.",
+        "Choose a location for your data (the default is fine) and click **ENABLE**.",
+        "Wait for the database to be created. Once it's done, come back to this tab.",
+    ];
+
+    return (
+        <div className="fixed inset-0 bg-cfm-light flex items-center justify-center z-50 p-4">
+            <div className="max-w-3xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center border-t-8 border-cfm-blue animate-fade-in">
+                <WrenchIcon className="h-16 w-16 text-cfm-blue mx-auto mb-4" />
+                <h2 className="text-3xl md:text-4xl font-extrabold text-cfm-dark">Final Setup Step</h2>
+                <p className="text-gray-600 text-lg mt-2 mb-6">Let's create your cloud database to store exam results.</p>
+
+                <div className="bg-gray-50 p-6 rounded-lg mt-6 shadow-inner text-left">
+                    <h3 className="font-bold text-xl text-cfm-dark mb-4">Follow These 4 Steps:</h3>
+                    <ol className="list-decimal list-inside space-y-4 text-gray-700">
+                        {setupSteps.map((step, index) => (
+                            <li key={index} className="flex items-start">
+                                <span className="flex items-center justify-center bg-cfm-blue text-white rounded-full font-bold text-sm h-6 w-6 mr-3 flex-shrink-0 mt-0.5">{index + 1}</span>
+                                <span dangerouslySetInnerHTML={{ __html: step.replace(/\*\*(.*?)\*\*/g, '<strong class="text-cfm-dark font-semibold">$1</strong>') }} />
+                            </li>
+                        ))}
+                    </ol>
+                </div>
+                
+                <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {url && (
+                        <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center text-center bg-cfm-blue text-white py-4 px-6 rounded-lg text-lg font-bold hover:bg-cfm-dark transition duration-150 shadow-lg"
+                        >
+                            Go to Google Cloud Setup
+                        </a>
+                    )}
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="inline-flex items-center justify-center bg-success text-white py-4 px-6 rounded-lg text-lg font-bold hover:bg-green-700 transition duration-150"
+                    >
+                        I've Done It, Refresh App!
+                    </button>
+                </div>
+                 <p className="text-xs text-gray-400 mt-6">This is a one-time setup. You won't see this screen again after the database is created.</p>
+            </div>
+        </div>
+    );
+};
+  
+  if (isSetupError && firebaseError) {
+      return renderSetupErrorScreen(firebaseError);
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 font-sans">
       <Header
@@ -262,9 +363,9 @@ const App: React.FC = () => {
       <footer className="w-full bg-cfm-dark text-white text-center py-4 text-sm font-light mt-10">
         &copy; {new Date().getFullYear()} CFM Training Institute Inc. Assessment System.
       </footer>
-      {(isOffline || firebaseError) && (view === 'admin' || view === 'auth' || (view === 'lobby' && user)) && (
-         <div className="fixed bottom-0 left-0 right-0 bg-yellow-400 text-sm text-center py-1 font-medium z-50 px-2">
-             {offlineMessage}
+      {(isOffline || firebaseError) && !isSetupError && (view === 'admin' || view === 'auth' || (view === 'lobby' && user)) && (
+         <div className="fixed bottom-0 left-0 right-0 z-50 px-4 py-3 font-medium flex items-center justify-center text-center bg-yellow-400 text-black">
+             <div className="text-sm">{renderFirebaseError(offlineMessage)}</div>
          </div>
       )}
       {modalState && (
