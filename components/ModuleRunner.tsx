@@ -3,6 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Module, ExamSession, ModuleResult, ExamRecord } from '../types';
 import QuestionCard from './QuestionCard';
 import { WarningIcon } from './Icons';
+import ActionModal from './ActionModal';
 
 interface ModuleRunnerProps {
   modules: Module[];
@@ -20,6 +21,7 @@ const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setEx
   const [showScoreModal, setShowScoreModal] = useState(false);
   const [moduleScore, setModuleScore] = useState<ModuleResult | null>(null);
   const [unselectedError, setUnselectedError] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const currentQuestion = currentModule.questions[currentQIndex];
   const isLastQuestionInModule = currentQIndex === currentModule.questions.length - 1;
@@ -97,7 +99,18 @@ const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setEx
   return (
     <div className="max-w-4xl mx-auto my-8 px-4">
       <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border-l-4 border-cfm-dark">
-        <h2 className="text-2xl font-bold text-cfm-dark">{`Module ${examSession.currentModuleIndex + 1}/${totalModules}: ${currentModule.title}`}</h2>
+        <div className="flex justify-between items-start sm:items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-cfm-dark">{`Module ${examSession.currentModuleIndex + 1}/${totalModules}: ${currentModule.title}`}</h2>
+          </div>
+          <button
+            onClick={() => setShowExitConfirm(true)}
+            className="px-4 py-2 rounded-lg font-semibold text-sm text-gray-700 bg-gray-200 hover:bg-gray-300 transition duration-150 shadow-sm"
+          >
+            &larr; Back to Lobby
+          </button>
+        </div>
+
         <div className="mt-4">
           <p className="text-sm font-medium text-gray-700 mb-1">Module Progress ({currentQIndex + 1} / {currentModule.questions.length})</p>
           <div className="w-full bg-gray-200 rounded-full h-2.5">
@@ -160,6 +173,17 @@ const ModuleRunner: React.FC<ModuleRunnerProps> = ({ modules, examSession, setEx
             </button>
           </div>
         </div>
+      )}
+
+      {showExitConfirm && (
+        <ActionModal
+          isVisible={true}
+          title="Return to Lobby?"
+          message="Are you sure you want to return to the lobby? Your progress will be saved, but the exam timer will not be paused."
+          onConfirm={() => navigate('lobby')}
+          onCancel={() => setShowExitConfirm(false)}
+          showCancel={true}
+        />
       )}
     </div>
   );

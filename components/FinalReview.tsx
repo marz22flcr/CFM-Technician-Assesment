@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 // Fix: Import ModuleResult for type annotations.
 import { View, ExamRecord, Module, ModuleResult } from '../types';
@@ -9,9 +8,10 @@ interface FinalReviewProps {
   examRecord: ExamRecord | null;
   modules: Module[];
   navigate: (view: View) => void;
+  isReviewingHistory: boolean;
 }
 
-const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate }) => {
+const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate, isReviewingHistory }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [filter, setFilter] = useState<'all' | 'correct' | 'incorrect'>('all');
 
@@ -125,7 +125,7 @@ const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate
                   <td colSpan={5} className="text-center py-10 text-gray-500 italic">No {filter} answers to display.</td>
                 </tr>
               ) : filteredReviewData.map((item, index) => (
-                <tr key={index} className={item.isCorrect ? 'hover:bg-green-50/50' : 'bg-red-50/50 hover:bg-red-100/70'}>
+                <tr key={index} className={item.isCorrect ? 'hover:bg-green-50/50' : 'bg-red-50/70'}>
                   <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     M{modules.findIndex(m => m.title === item.moduleTitle) + 1}
                   </td>
@@ -141,12 +141,23 @@ const FinalReview: React.FC<FinalReviewProps> = ({ examRecord, modules, navigate
           </table>
         </div>
 
-        <button
-          onClick={() => setShowLogoutConfirm(true)}
-          className="mt-8 px-6 py-3 rounded-lg font-semibold bg-gray-500 text-white hover:bg-gray-700 transition duration-150 shadow-md float-right"
-        >
-          Logout & Start New Exam
-        </button>
+        <div className="flex justify-end mt-8">
+          {isReviewingHistory ? (
+              <button
+                onClick={() => navigate('lobby')}
+                className="px-6 py-3 rounded-lg font-semibold bg-cfm-blue text-white hover:bg-cfm-dark transition duration-150 shadow-md"
+              >
+                Back to Lobby
+              </button>
+          ) : (
+              <button
+                onClick={() => setShowLogoutConfirm(true)}
+                className="px-6 py-3 rounded-lg font-semibold bg-gray-500 text-white hover:bg-gray-700 transition duration-150 shadow-md"
+              >
+                Logout & Start New Exam
+              </button>
+          )}
+        </div>
       </div>
 
       {showLogoutConfirm && (

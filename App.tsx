@@ -1,14 +1,8 @@
-
-
-
-
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-// FIX: Corrected import name from INITIAL_TRAINEE to INITIAL_TRAINEES.
 import { INITIAL_TRAINEES, USER_KEY, EXAM_DATA } from './constants';
-// Fix: Add ModalState to types import
-import { View, User, ExamSession, ExamRecord, FirestoreDB, ModuleResult, TraineeList, ModalState } from './types';
-import { initializeFirebase, saveExamRecord, listenForTrainees, seedInitialTrainees } from './services/firebaseService';
+import { View, User, ExamSession, ExamRecord, FirestoreDB, ModuleResult, TraineeList, ModalState, Module } from './types';
+import { initializeFirebase, saveExamRecord, listenForTrainees, seedInitialTrainees, listenForUserResults } from './services/firebaseService';
+import { startReviewChatSession } from './services/geminiService';
 
 import Header from './components/Header';
 import Auth from './components/Auth';
@@ -17,8 +11,8 @@ import ModuleRunner from './components/ModuleRunner';
 import FinalReview from './components/FinalReview';
 import AdminLogin from './components/AdminLogin';
 import AdminSummary from './components/AdminSummary';
-// Fix: Import ActionModal for error popups
 import ActionModal from './components/ActionModal';
+import Chatbot from './components/Chatbot';
 import { WrenchIcon } from './components/Icons';
 
 const EXAM_DURATION_SECONDS = 60 * 60; // 60 minutes
@@ -45,7 +39,12 @@ const App: React.FC = () => {
   });
   const [finalRecord, setFinalRecord] = useState<ExamRecord | null>(null);
   const [trainees, setTrainees] = useState<TraineeList>({});
-
+  
+  // State for exam history and review context
+  const [userHistory, setUserHistory] = useState<ExamRecord[]>([]);
+  const [isReviewingHistory, setIsReviewingHistory] = useState(false);
+  const [moduleForReview, setModuleForReview] = useState<Module | null>(null);
+  
   const [db, setDb] = useState<FirestoreDB | null>(null);
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const [traineeFetchError, setTraineeFetchError] = useState(false);
@@ -73,12 +72,10 @@ const App: React.FC = () => {
                     (error) => { 
                         console.error("Error fetching trainees:", error);
                         setTraineeFetchError(true);
-                        setTrainees(INITIAL_TRAINEES); // Fallback to local data
+                        setTrainees(INITIAL_TRAINEES);
                     }
                 );
             } catch (error: any) {
-                // Simplified catch block. Specific config errors are now handled in initializeFirebase.
-                // This will catch transient network errors during seeding.
                 console.error("Caught error during trainee setup:", error);
                 setTraineeFetchError(true);
                 setTrainees(INITIAL_TRAINEES);
@@ -86,11 +83,24 @@ const App: React.FC = () => {
         };
         setupTrainees();
     } else {
-        // If Firebase fails to initialize, fall back to initial trainees for offline mode.
         setTrainees(INITIAL_TRAINEES);
     }
     return () => { unsubscribe(); };
   }, [db, isFirebaseReady]);
+
+  useEffect(() => {
+    let unsubscribe = () => {};
+    if (user?.userId && db && isFirebaseReady) {
+      unsubscribe = listenForUserResults(db, user.userId, setUserHistory, (err) => {
+        console.error("Failed to fetch user history:", err);
+        setUserHistory([]);
+      });
+    } else {
+      setUserHistory([]);
+    }
+    return () => unsubscribe();
+  }, [user, db, isFirebaseReady]);
+
 
   const modules = EXAM_DATA.modules;
   const totalPossible = useMemo(() => modules.reduce((sum, mod) => sum + mod.questions.length, 0), [modules]);
@@ -109,8 +119,12 @@ const App: React.FC = () => {
     setExamEndTime(null);
     setTimeLeft(null);
   }, []);
-
+  
   const navigate = useCallback((newView: View, data: any = null) => {
+    if (view === 'review' && newView !== 'review') {
+        setIsReviewingHistory(false);
+    }
+
     if (newView === 'lobby' && view === 'auth') {
       setExamSession({
         currentModuleIndex: 0,
@@ -119,9 +133,14 @@ const App: React.FC = () => {
         submittedModules: {},
       });
       setFinalRecord(null);
+      clearTimer(); // Ensure timer is cleared on new session
+    }
+
+    if (newView === 'lobby' && view === 'reviewer') {
+      setModuleForReview(null);
     }
     
-    if (newView === 'exam' && view !== 'exam') {
+    if (newView === 'exam' && !examEndTime) { // Only start timer if not already running
         const endTime = Date.now() + EXAM_DURATION_SECONDS * 1000;
         localStorage.setItem(EXAM_END_TIME_KEY, endTime.toString());
         setExamEndTime(endTime);
@@ -132,7 +151,7 @@ const App: React.FC = () => {
     }
     
     setView(newView);
-  }, [view]);
+  }, [view, examEndTime, clearTimer]);
 
   useEffect(() => {
     if (user?.name && view === 'auth') {
@@ -141,7 +160,6 @@ const App: React.FC = () => {
   }, [user, view]);
 
   const finalizeExam = useCallback(async (): Promise<ExamRecord> => {
-    // FIX: Explicitly cast the result of Object.values to ModuleResult[] to address faulty type inference.
     const finalTotalScore = (Object.values(examSession.moduleResults) as ModuleResult[]).reduce((a, b) => a + b.score, 0);
     const finalTotalPossible = (Object.values(examSession.moduleResults) as ModuleResult[]).reduce((a, b) => a + b.total, 0);
     
@@ -166,6 +184,7 @@ const App: React.FC = () => {
     }
 
     clearTimer();
+    setIsReviewingHistory(false);
     return record;
   }, [examSession, user, db, isFirebaseReady, clearTimer]);
   
@@ -175,7 +194,7 @@ const App: React.FC = () => {
   }, [finalizeExam, navigate]);
 
   useEffect(() => {
-    if (!examEndTime || view !== 'exam') {
+    if (!examEndTime) {
       setTimeLeft(null);
       return;
     }
@@ -188,17 +207,19 @@ const App: React.FC = () => {
         }
     }, 1000);
     return () => clearInterval(interval);
-  }, [examEndTime, view, handleAutoSubmit]);
+  }, [examEndTime, handleAutoSubmit]);
 
   useEffect(() => {
     const storedEndTime = localStorage.getItem(EXAM_END_TIME_KEY);
-    if (storedEndTime && view === 'exam') {
+    if (storedEndTime) {
         const endTime = parseInt(storedEndTime, 10);
         if (endTime > Date.now()) {
             setExamEndTime(endTime);
         } else {
-            localStorage.removeItem(EXAM_END_TIME_KEY);
-            handleAutoSubmit();
+            // If timer has expired but we are not on the review screen, submit it.
+            if(view !== 'review') {
+              handleAutoSubmit();
+            }
         }
     }
   }, [view, handleAutoSubmit]);
@@ -217,17 +238,40 @@ const App: React.FC = () => {
     }));
     navigate('exam');
   }, [navigate]);
+  
+  const viewHistoricalRecord = (record: ExamRecord) => {
+    setFinalRecord(record);
+    setIsReviewingHistory(true);
+    navigate('review');
+  };
 
+  const handleStartReview = async (module: Module) => {
+    setModuleForReview(module);
+    try {
+      setModalState({ title: "Initializing AI...", message: "Please wait while the AI prepares your review session." });
+      await startReviewChatSession(module);
+      setModalState(null);
+      navigate('reviewer');
+    } catch (error: any) {
+      console.error("Failed to start review chat session:", error);
+      setModalState({
+        title: "AI Error",
+        message: error.message || "Could not start the AI review session. Please try again.",
+        isError: true,
+      });
+    }
+  };
+  
   const renderContent = () => {
     switch (view) {
       case 'auth':
-        return <Auth setUser={setUser} navigate={navigate} trainees={trainees} />;
+        return <Auth setUser={setUser} navigate={navigate} trainees={trainees} db={db} isFirebaseReady={isFirebaseReady} />;
       case 'lobby':
         if (!user) {
             navigate('auth');
             return null;
         }
-        return <Lobby modules={modules} navigate={navigate} user={user} onLogout={handleLogout} onJumpToModule={jumpToModule} />;
+        return <Lobby modules={modules} navigate={navigate} user={user} onLogout={handleLogout} onJumpToModule={jumpToModule} userHistory={userHistory} onViewRecord={viewHistoricalRecord} onStartReview={handleStartReview} />;
       case 'exam':
         if (!user) {
             navigate('auth');
@@ -243,19 +287,24 @@ const App: React.FC = () => {
           />
         );
       case 'review':
-        return <FinalReview examRecord={finalRecord} modules={modules} navigate={navigate} />;
+        return <FinalReview examRecord={finalRecord} modules={modules} navigate={navigate} isReviewingHistory={isReviewingHistory} />;
       case 'admin-login':
         return <AdminLogin navigate={navigate} />;
       case 'admin':
         return <AdminSummary navigate={navigate} db={db} isFirebaseReady={isFirebaseReady} trainees={trainees} />;
+      case 'reviewer':
+        if (!moduleForReview) {
+            navigate('lobby');
+            return null;
+        }
+        return <Chatbot module={moduleForReview} onClose={() => navigate('lobby')} timeLeft={timeLeft} />;
       default:
-        return <Auth setUser={setUser} navigate={navigate} trainees={trainees} />;
+        return <Auth setUser={setUser} navigate={navigate} trainees={trainees} db={db} isFirebaseReady={isFirebaseReady} />;
     }
   };
   
   const isOffline = !isFirebaseReady || traineeFetchError;
   
-  // A simple check to see if the error is a critical setup/config issue.
   const isSetupError = firebaseError && firebaseError.includes('SETUP REQUIRED');
   const isConfigError = firebaseError && firebaseError.startsWith('SETUP_CONFIG');
 
@@ -266,7 +315,6 @@ const App: React.FC = () => {
     : "Offline Mode: Database not connected. Results will not be saved.";
 
 
-  // Helper to render error messages with clickable links for the bottom banner.
   const renderFirebaseError = (errorMessage: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const parts = errorMessage.split(urlRegex);
@@ -406,7 +454,8 @@ const App: React.FC = () => {
         totalPossible={totalPossible}
         currentScore={view === 'exam' ? currentScore : null}
         progress={view === 'exam' ? overallProgress : null}
-        timeLeft={view === 'exam' ? timeLeft : null}
+        timeLeft={timeLeft}
+        onLogout={handleLogout}
       />
       <main className="pb-12">
         {renderContent()}

@@ -167,6 +167,31 @@ export const listenForResults = (
   return unsubscribe;
 };
 
+export const listenForUserResults = (
+  db: FirestoreDB,
+  userId: string,
+  onUpdate: (records: ExamRecord[]) => void,
+  onError: (error: Error) => void
+): (() => void) => {
+  const collectionRef = getResultsCollection(db);
+  // The original query included `.orderBy('timestamp', 'desc')`, which requires a composite index
+  // that must be manually created in Firebase. To prevent app failure on new setups,
+  // we remove the orderBy clause and sort the results on the client side instead.
+  const query = collectionRef.where('user.userId', '==', userId);
+
+  const unsubscribe = query.onSnapshot((snapshot: any) => {
+    const fetchedResults: ExamRecord[] = snapshot.docs.map((doc: any) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    // Sort descending by timestamp on the client to ensure correct order
+    fetchedResults.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    onUpdate(fetchedResults);
+  }, onError);
+
+  return unsubscribe;
+};
+
 export const clearAllResults = async (db: FirestoreDB): Promise<number> => {
     const collectionRef = getResultsCollection(db);
     try {

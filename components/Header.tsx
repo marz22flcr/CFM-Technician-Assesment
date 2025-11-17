@@ -1,8 +1,6 @@
-
-
 import React from 'react';
 import { User } from '../types';
-import { WrenchIcon, UserIcon, ClockIcon } from './Icons';
+import { WrenchIcon, UserIcon, ClockIcon, LogoutIcon } from './Icons';
 
 interface HeaderProps {
   user: User | null;
@@ -10,9 +8,10 @@ interface HeaderProps {
   currentScore: number | null;
   progress: number | null;
   timeLeft: number | null;
+  onLogout: () => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ user, totalPossible, currentScore, progress, timeLeft }) => {
+const Header: React.FC<HeaderProps> = ({ user, totalPossible, currentScore, progress, timeLeft, onLogout }) => {
   const currentTotal = totalPossible || 100;
 
   const formatTime = (seconds: number) => {
@@ -44,24 +43,34 @@ const Header: React.FC<HeaderProps> = ({ user, totalPossible, currentScore, prog
                     </span>
                 </div>
             )}
-            <div className="flex flex-col items-end">
-              <div className="text-sm font-semibold text-gray-700 flex items-center space-x-2">
-                <UserIcon className="h-4 w-4 text-cfm-blue" />
-                <span>{user.name}</span>
+            <div className="flex items-center space-x-3">
+              <div className="flex flex-col items-end">
+                <div className="text-sm font-semibold text-gray-700 flex items-center space-x-2">
+                  <UserIcon className="h-4 w-4 text-cfm-blue" />
+                  <span>{user.name}</span>
+                </div>
+                {currentScore !== null && (
+                  <div className="mt-1 text-sm text-gray-500">
+                    Score: <span className="font-bold text-cfm-blue">{currentScore} / {currentTotal}</span>
+                  </div>
+                )}
+                {progress !== null && (
+                  <div className="w-24 bg-gray-200 rounded-full h-1.5 mt-1">
+                    <div
+                      className="bg-cfm-blue h-1.5 rounded-full transition-all duration-500 ease-in-out"
+                      style={{ width: `${progress * 100}%` }}
+                    ></div>
+                  </div>
+                )}
               </div>
-              {currentScore !== null && (
-                <div className="mt-1 text-sm text-gray-500">
-                  Score: <span className="font-bold text-cfm-blue">{currentScore} / {currentTotal}</span>
-                </div>
-              )}
-              {progress !== null && (
-                <div className="w-24 bg-gray-200 rounded-full h-1.5 mt-1">
-                  <div
-                    className="bg-cfm-blue h-1.5 rounded-full transition-all duration-500 ease-in-out"
-                    style={{ width: `${progress * 100}%` }}
-                  ></div>
-                </div>
-              )}
+              <button
+                onClick={onLogout}
+                className="p-2 rounded-full text-gray-500 hover:bg-red-100 hover:text-error transition-colors self-center"
+                title="Logout"
+                aria-label="Logout"
+              >
+                <LogoutIcon className="h-5 w-5" />
+              </button>
             </div>
           </div>
         )}

@@ -47,7 +47,7 @@ export interface ExamRecord {
   totalPossible: number;
 }
 
-export type View = 'auth' | 'lobby' | 'exam' | 'review' | 'admin-login' | 'admin';
+export type View = 'auth' | 'lobby' | 'exam' | 'review' | 'admin-login' | 'admin' | 'reviewer';
 
 export type SortKey = 'name' | 'timestamp' | 'totalscore';
 export type SortDirection = 'asc' | 'desc';
