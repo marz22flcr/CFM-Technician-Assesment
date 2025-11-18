@@ -255,11 +255,26 @@ const App: React.FC = () => {
       navigate('reviewer');
     } catch (error: any) {
       console.error("Failed to start review chat session:", error);
-      setModalState({
-        title: "AI Error",
-        message: error.message || "Could not start the AI review session. Please try again.",
-        isError: true,
-      });
+
+      if (error?.message?.includes("AI_CONFIG_ERROR::API_KEY_MISSING_OR_INVALID_ON_WINDOW")) {
+        setModalState({
+            title: "AI Configuration Error",
+            message: "The application could not find the required API Key.\n\nThis is a configuration issue on Netlify. Please follow these steps carefully:\n\n1. In Netlify Environment Variables:\n   - Ensure you have a variable with the KEY `API_KEY`.\n   - Ensure the VALUE is your full, secret Gemini API key.\n\n2. In Netlify Snippet Injection:\n   - **REPLACE** your old script with this one:\n   - `<script>window.GEMINI_API_KEY = '{{ env.API_KEY }}';</script>`\n   - Make sure it's inserted before the `</head>` tag.\n\n3. Redeploy:\n   - Trigger a new deploy **without cache**.",
+            isError: true,
+        });
+      } else if (error?.message?.includes("AI_CONFIG_ERROR::API_KEY_INVALID")) {
+           setModalState({
+              title: "AI Authentication Error",
+              message: "The provided API Key is invalid. Please double-check the key in your Netlify environment variables and ensure it's correct.",
+              isError: true,
+          });
+      } else {
+          setModalState({
+            title: "AI Error",
+            message: error.message || "Could not start the AI review session. Please try again.",
+            isError: true,
+          });
+      }
     }
   };
   

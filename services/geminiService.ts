@@ -1,13 +1,26 @@
 import { GoogleGenAI, Chat } from '@google/genai';
 import { Module } from '../types';
 
+declare global {
+  interface Window {
+    GEMINI_API_KEY?: string;
+  }
+}
+
 let activeChat: Chat | null = null;
 
 export const startReviewChatSession = async (module: Module) => {
     try {
-        const { GoogleGenAI } = await import('@google/genai');
-        // This relies on the API_KEY being available in the execution environment.
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const apiKey = window.GEMINI_API_KEY;
+
+        // More robust check for missing, placeholder, or invalid API key on the window object.
+        if (!apiKey || apiKey.includes('REPLACE') || apiKey.length < 10) {
+            console.error("Gemini API Key not found or is invalid on window.GEMINI_API_KEY. Check Netlify environment variables and snippet injection.");
+            // Throw a new, specific error for the app to catch.
+            throw new Error("AI_CONFIG_ERROR::API_KEY_MISSING_OR_INVALID_ON_WINDOW");
+        }
+        
+        const ai = new GoogleGenAI({ apiKey });
 
         const detailedContext = module.questions.map((q, i) => {
             const choicesText = Object.entries(q.choices).map(([key, value]) => `  ${key}) ${value}`).join('\n');
@@ -36,10 +49,15 @@ Be encouraging, use clear language, and break down complex topics into simple st
         });
     } catch (error) {
         console.error("Failed to initialize Gemini review chat:", error);
-        if (error instanceof ReferenceError) {
-             throw new Error("Could not initialize AI Client. The API Key is missing or not configured for this environment.");
+        if (error instanceof Error) {
+            if (error.message.includes("AI_CONFIG_ERROR")) {
+                throw error;
+            }
+            if (error.message.includes('API key not valid')) {
+                throw new Error("AI_CONFIG_ERROR::API_KEY_INVALID");
+            }
         }
-        throw new Error("Could not initialize the AI Assistant for review.");
+        throw new Error("Could not initialize the AI Assistant for review. Please check the browser console for more details.");
     }
 };
 
